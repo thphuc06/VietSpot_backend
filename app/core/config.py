@@ -19,6 +19,39 @@ class Settings(BaseSettings):
     SUPABASE_KEY: str
     SUPABASE_BUCKET: str = "images"
     
+    # Google Gemini (Legacy API Key - kept for fallback)
+    GEMINI_API_KEY: Optional[str] = None
+    
+    # Vertex AI Configuration
+    VERTEX_PROJECT_ID: str = "scrape-food1"
+    VERTEX_LOCATION: str = "global"
+    VERTEX_MODEL_ID: str = "gemini-2.0-flash-exp"
+    
+    # OpenWeather
+    OPENWEATHER_API_KEY: Optional[str] = None
+    
+    # HuggingFace
+    HUGGINGFACE_API_KEY: Optional[str] = None
+    
+    # Server
+    HOST: str = "127.0.0.1"
+    PORT: int = 8000
+    
+    # Search Configuration
+    DEFAULT_NEARBY_RADIUS_KM: float = 10.0
+    DEFAULT_NEARBY_RADIUS_KM_SHORT: float = 2.0
+    TOP_N_SEMANTIC_RESULTS: int = 20
+    TOP_K_FINAL_RESULTS: int = 10
+    
+    # Scoring Weights
+    WEIGHT_SEMANTIC: float = 0.5
+    WEIGHT_DISTANCE: float = 0.2
+    WEIGHT_RATING: float = 0.2
+    WEIGHT_POPULARITY: float = 0.1
+    
+    # Model Configuration
+    EMBEDDING_MODEL: str = "dangvantuan/vietnamese-embedding"
+    
     # CORS
     CORS_ORIGINS: list[str] = ["*"]
     

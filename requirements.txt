@@ -13,6 +13,14 @@ pydantic-settings>=2.1.0
 # Environment
 python-dotenv>=1.0.0
 
+# AI/ML Services
+google-genai>=1.0.0
+sentence-transformers>=2.2.2
+numpy>=1.26.0
+
+# HTTP Client
+requests>=2.31.0
+
 # Testing (optional - chỉ cần khi dev)
 # pytest>=7.4.4
 # pytest-asyncio>=0.23.3

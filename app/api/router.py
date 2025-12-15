@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoints import places, comments, images, users
+from app.api.endpoints import places, comments, images, users, chat
 
 api_router = APIRouter()
 
@@ -28,4 +28,10 @@ api_router.include_router(
     users.router,
     prefix="/users",
     tags=["Users"]
+)
+
+# Chat - AI chatbot endpoints
+api_router.include_router(
+    chat.router,
+    tags=["Chat"]
 )
