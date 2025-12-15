@@ -29,45 +29,16 @@ async def get_place_comments(
     order_by: str = "recent",  # recent, rating_desc, rating_asc
     db: Client = Depends(get_db)
 ):
-    """
-    Lấy danh sách comments của một địa điểm.
-    
-    - **place_id**: UUID của địa điểm
-    - **limit**: Số lượng comments tối đa (default: 20)
-    - **offset**: Vị trí bắt đầu (default: 0)
-    - **order_by**: Cách sắp xếp (recent, rating_desc, rating_asc)
-    """
+    """Lấy danh sách comments của một địa điểm. Sử dụng RPC get_comments_by_place."""
     try:
-        query = db.table('comments').select('*').eq('place_id', place_id)
+        response = db.rpc("get_comments_by_place", {
+            "p_place_id": place_id,
+            "p_limit": limit,
+            "p_offset": offset,
+            "p_order_by": order_by
+        }).execute()
         
-        # Áp dụng sorting
-        if order_by == "recent":
-            query = query.order('date', desc=True)
-        elif order_by == "rating_desc":
-            query = query.order('rating', desc=True)
-        elif order_by == "rating_asc":
-            query = query.order('rating', desc=False)
-        
-        # Áp dụng pagination
-        query = query.range(offset, offset + limit - 1)
-        
-        response = query.execute()
-        
-        if hasattr(response, 'data'):
-            comments = response.data
-            
-            # Lấy ảnh cho từng comment
-            for comment in comments:
-                comment_id = comment.get('id')
-                img_response = db.table('images').select('*').eq('comment_id', comment_id).execute()
-                
-                if hasattr(img_response, 'data') and img_response.data:
-                    comment['images'] = img_response.data
-                else:
-                    comment['images'] = []
-            
-            return comments
-        return []
+        return response.data if response.data else []
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi khi lấy comments: {str(e)}")
@@ -80,71 +51,42 @@ async def create_comment(
 ):
     """
     Tạo comment mới cho một địa điểm.
-    
-    Body:
-    - **place_id**: UUID của địa điểm
-    - **user_id**: UUID của user (optional - có thể để trống cho khách)
-    - **author_name**: Tên hiển thị
-    - **rating**: Điểm đánh giá (0-5)
-    - **text**: Nội dung comment
-    - **image_urls**: Danh sách URLs ảnh (đã upload trước đó)
+    Sử dụng RPC create_user_content (tự động tạo guest user nếu cần).
     """
     try:
-        # Validate place_id tồn tại
-        place_check = db.table('places').select('id').eq('id', request.place_id).execute()
-        if not (hasattr(place_check, 'data') and place_check.data):
-            raise HTTPException(status_code=404, detail="Địa điểm không tồn tại")
+        # Generate user_id nếu không có
+        user_id = request.user_id if request.user_id and request.user_id.strip() else str(uuid.uuid4())
         
-        # Validate user_id nếu có
-        user_id_to_use = None
-        if request.user_id and request.user_id.strip():
-            user_check = db.table('users').select('id').eq('id', request.user_id).execute()
-            if not (hasattr(user_check, 'data') and user_check.data):
-                raise HTTPException(status_code=404, detail="User không tồn tại")
-            user_id_to_use = request.user_id
+        # Gọi RPC function - xử lý tất cả: validate place, tạo user, insert comment + images
+        response = db.rpc("create_user_content", {
+            "p_place_id": request.place_id,
+            "p_user_id": user_id,
+            "p_author_name": request.author_name or "Khách tham quan",
+            "p_rating": request.rating,
+            "p_text": request.text,
+            "p_image_urls": request.image_urls if request.image_urls else []
+        }).execute()
         
-        # Insert comment trực tiếp
-        comment_id = str(uuid.uuid4())
-        
-        comment_data = {
-            "id": comment_id,
-            "place_id": request.place_id,
-            "author": request.author_name,
-            "rating": request.rating,
-            "text": request.text,
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "is_scraped": False
-        }
-        
-        # Chỉ thêm user_id nếu có
-        if user_id_to_use:
-            comment_data["user_id"] = user_id_to_use
-        
-        comment_response = db.table('comments').insert(comment_data).execute()
-        
-        if not (hasattr(comment_response, 'data') and comment_response.data):
-            raise HTTPException(status_code=500, detail="Lỗi khi tạo comment")
-        
-        # Insert images nếu có
-        if request.image_urls:
-            for url in request.image_urls:
-                if url and url.strip():
-                    img_data = {
-                        "id": str(uuid.uuid4()),
-                        "comment_id": comment_id,
-                        "place_id": request.place_id,
-                        "url": url,
-                        "is_scraped": False,
-                        "uploaded_at": datetime.now().isoformat()
-                    }
-                    db.table('images').insert(img_data).execute()
-        
-        return APIResponse(
-            success=True,
-            message="Đã tạo comment thành công",
-            data={"comment_id": comment_id}
-        )
+        if response.data:
+            result = response.data[0] if isinstance(response.data, list) else response.data
             
+            if result.get("success"):
+                return APIResponse(
+                    success=True,
+                    message=result.get("message", "Đã tạo comment thành công"),
+                    data={
+                        "comment_id": str(result.get("comment_id")),
+                        "user_id": user_id,
+                        "images_count": result.get("images_count", 0)
+                    }
+                )
+            else:
+                raise HTTPException(status_code=400, detail=result.get("message", "Lỗi tạo comment"))
+        
+        raise HTTPException(status_code=500, detail="Không nhận được response từ database")
+            
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi khi tạo comment: {str(e)}")
 
@@ -212,6 +154,7 @@ async def delete_comment(
 ):
     """
     Xóa comment (chỉ owner mới được xóa).
+    Trigger `trigger_update_place_rating` sẽ tự động cập nhật rating của place.
     
     - **comment_id**: UUID của comment cần xóa
     - **X-User-ID**: Header chứa user_id
@@ -228,10 +171,8 @@ async def delete_comment(
         if comment_owner != user_id:
             raise HTTPException(status_code=403, detail="Bạn không có quyền xóa comment này")
         
-        # Xóa ảnh liên quan trước
-        db.table('images').delete().eq('comment_id', comment_id).execute()
-        
-        # Xóa comment
+        # Xóa comment - cascade sẽ xóa images liên quan (FK constraint)
+        # Trigger sẽ tự động update rating của place
         response = db.table('comments').delete().eq('id', comment_id).execute()
         
         if hasattr(response, 'data'):

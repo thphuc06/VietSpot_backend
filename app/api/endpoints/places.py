@@ -1,9 +1,9 @@
 """
 Places Endpoints
 Xử lý các API liên quan đến địa điểm du lịch
+Sử dụng RPC function get_places_advanced_v2 (PostGIS)
 """
 
-import math
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
 from supabase import Client
@@ -14,208 +14,68 @@ from app.schemas.place import Place, PlaceCreate, PlaceUpdate
 router = APIRouter()
 
 
-def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Tính khoảng cách giữa 2 điểm (Haversine formula).
-    Trả về khoảng cách tính bằng km.
-    """
-    R = 6371  # Bán kính trái đất (km)
-    
-    lat1_rad = math.radians(lat1)
-    lat2_rad = math.radians(lat2)
-    delta_lat = math.radians(lat2 - lat1)
-    delta_lon = math.radians(lon2 - lon1)
-    
-    a = math.sin(delta_lat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    
-    return round(R * c, 2)
-
-
-def get_place_coordinates(place: dict) -> tuple:
-    """
-    Lấy lat, lon từ place coordinates.
-    Xử lý nhiều format khác nhau của coordinates.
-    
-    Returns: (lat, lon) hoặc (None, None)
-    """
-    coords = place.get("coordinates")
-    if not coords:
-        return None, None
-    
-    # Nếu coords là string, parse JSON
-    if isinstance(coords, str):
-        import json
-        try:
-            coords = json.loads(coords)
-        except:
-            return None, None
-    
-    # Format 1: Array [lon, lat] (GeoJSON standard)
-    if isinstance(coords, list) and len(coords) >= 2:
-        try:
-            lon = float(coords[0])
-            lat = float(coords[1])
-            return lat, lon
-        except:
-            return None, None
-    
-    # Format 2: Object {lat: ..., lon/lng: ...}
-    if isinstance(coords, dict):
-        lat = coords.get("lat") or coords.get("latitude")
-        lon = coords.get("lon") or coords.get("lng") or coords.get("longitude")
-        
-        if lat is not None and lon is not None:
-            try:
-                return float(lat), float(lon)
-            except:
-                return None, None
-    
-    return None, None
-
-
 @router.get("", response_model=List[dict])
 async def get_places(
-    # Pagination
     skip: int = Query(0, ge=0, description="Số records bỏ qua"),
     limit: int = Query(20, ge=1, le=100, description="Số records tối đa"),
-    
-    # Location filters
-    lat: Optional[float] = Query(None, description="Latitude của user (để tính khoảng cách)"),
-    lon: Optional[float] = Query(None, description="Longitude của user (để tính khoảng cách)"),
+    lat: Optional[float] = Query(None, description="Latitude của user"),
+    lon: Optional[float] = Query(None, description="Longitude của user"),
     max_distance: Optional[int] = Query(None, description="Khoảng cách tối đa (km)"),
-    location: Optional[str] = Query(None, description="Tìm theo địa điểm/thành phố trong address"),
-    
-    # Category & Rating filters  
-    categories: Optional[str] = Query(None, description="Categories (phân cách bằng dấu phẩy, VD: 'Quán cà phê,Nhà hàng')"),
+    location: Optional[str] = Query(None, description="Tìm theo địa điểm/thành phố"),
+    categories: Optional[str] = Query(None, description="Categories (phân cách bằng dấu phẩy)"),
     min_rating: Optional[float] = Query(None, ge=0, le=5, description="Rating tối thiểu"),
-    
-    # Search
     search: Optional[str] = Query(None, description="Tìm kiếm theo tên"),
-    
-    # Sort
     sort_by: Optional[str] = Query("rating", description="Sắp xếp: rating, distance, rating_count"),
-    
     db: Client = Depends(get_db)
 ):
-    """
-    Lấy danh sách các địa điểm với đầy đủ filters.
-    
-    - **lat, lon**: Tọa độ user để tính khoảng cách và sắp xếp theo distance
-    - **max_distance**: Lọc địa điểm trong bán kính (km)
-    - **location**: Tìm theo thành phố/địa chỉ
-    - **categories**: Lọc theo loại địa điểm (phân cách bằng dấu phẩy)
-    - **min_rating**: Lọc rating tối thiểu
-    - **search**: Tìm kiếm theo tên
-    - **sort_by**: Sắp xếp theo rating/distance/rating_count
-    """
+    """Lấy danh sách địa điểm với filters. Sử dụng RPC get_places_advanced_v2."""
     try:
-        # Parse categories từ string thành list
-        category_list = None
+        # Parse categories string thành array
+        category_array = None
         if categories:
-            category_list = [c.strip() for c in categories.split(",") if c.strip()]
+            category_array = [c.strip() for c in categories.split(",") if c.strip()]
         
-        # Query database - lấy nhiều để filter distance sau
-        query = db.table("places").select("*")
+        # sort_options phải là array
+        sort_options_array = [sort_by] if sort_by else ["rating"]
         
-        # Filter theo categories
-        if category_list and len(category_list) > 0:
-            if len(category_list) == 1:
-                query = query.eq("category", category_list[0])
-            else:
-                query = query.in_("category", category_list)
+        # Gọi RPC function
+        response = db.rpc("get_places_advanced_v2", {
+            "p_location": location,
+            "p_lat": lat,
+            "p_lon": lon,
+            "p_categories": category_array,
+            "p_min_rating": min_rating,
+            "p_max_distance": max_distance,
+            "p_price_levels": None,
+            "p_amenities_jsonb": None,
+            "p_sort_options": sort_options_array,
+            "p_limit": skip + limit + 50
+        }).execute()
         
-        # Filter theo location (tìm trong address)
-        if location:
-            query = query.ilike("address", f"%{location}%")
-        
-        # Filter theo rating
-        if min_rating is not None and min_rating > 0:
-            query = query.gte("rating", min_rating)
-        
-        # Tìm kiếm theo tên
-        if search:
-            query = query.ilike("name", f"%{search}%")
-        
-        # Sắp xếp theo rating trước
-        query = query.order("rating", desc=True)
-        
-        # Nếu cần filter distance, lấy nhiều records hơn
-        # Vì filter distance xảy ra ở code Python, không phải DB
-        if lat is not None and lon is not None and max_distance is not None:
-            fetch_limit = 1000  # Lấy nhiều để filter
-        else:
-            fetch_limit = skip + limit + 100  # Thêm buffer
-        
-        query = query.limit(fetch_limit)
-        
-        response = query.execute()
         places = response.data if response.data else []
         
-        # ===== XỬ LÝ DISTANCE =====
-        result_places = []
+        # Filter theo search (nếu RPC chưa support)
+        if search:
+            search_lower = search.lower()
+            places = [p for p in places if search_lower in (p.get("name") or "").lower()]
         
+        # Pagination
+        places = places[skip:skip + limit]
+        
+        # Format output
         for place in places:
-            place_lat, place_lon = get_place_coordinates(place)
-            
-            # Tính khoảng cách nếu có tọa độ user
-            if lat is not None and lon is not None:
-                if place_lat is not None and place_lon is not None:
-                    distance = calculate_distance(lat, lon, place_lat, place_lon)
-                    place["distance_km"] = distance
-                    place["distance_m"] = int(distance * 1000)
-                    
-                    # Filter theo max_distance - BỎ QUA place quá xa
-                    if max_distance is not None and distance > max_distance:
-                        continue  # Skip place này
-                else:
-                    # Place không có tọa độ
-                    place["distance_km"] = None
-                    place["distance_m"] = None
-                    
-                    # Nếu yêu cầu filter distance nhưng place không có tọa độ -> bỏ qua
-                    if max_distance is not None:
-                        continue
+            if place.get("distance_km") is not None:
+                place["distance_m"] = int(float(place["distance_km"]) * 1000)
             else:
-                # User không cung cấp tọa độ
-                place["distance_km"] = None
                 place["distance_m"] = None
             
-            result_places.append(place)
-        
-        # ===== SORT =====
-        if sort_by == "distance" and lat is not None and lon is not None:
-            # Sort theo distance (gần nhất trước)
-            result_places = sorted(
-                result_places,
-                key=lambda x: x.get("distance_km") if x.get("distance_km") is not None else 99999
-            )
-        elif sort_by == "rating_count":
-            result_places = sorted(
-                result_places,
-                key=lambda x: x.get("rating_count") or 0,
-                reverse=True
-            )
-        # Mặc định đã sort theo rating từ query
-        
-        # ===== PAGINATION (sau khi filter distance) =====
-        result_places = result_places[skip:skip + limit]
-        
-        # ===== LẤY IMAGES =====
-        for place in result_places:
-            try:
-                img_response = db.table("images").select("id, url").eq("place_id", place["id"]).limit(5).execute()
-                place["images"] = img_response.data if img_response.data else []
-            except:
+            if "images" not in place or place["images"] is None:
                 place["images"] = []
         
-        return result_places
+        return places
         
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi khi lấy danh sách địa điểm: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Lỗi khi lấy danh sách địa điểm: {str(e)}")
 
 
 @router.get("/nearby", response_model=List[dict])
@@ -228,23 +88,37 @@ async def get_nearby_places(
     limit: int = Query(20, ge=1, le=100, description="Số kết quả tối đa"),
     db: Client = Depends(get_db)
 ):
-    """
-    Lấy các địa điểm gần vị trí user.
-    Tự động sort theo khoảng cách (gần nhất trước).
-    """
-    return await get_places(
-        skip=0,
-        limit=limit,
-        lat=lat,
-        lon=lon,
-        max_distance=radius,
-        location=None,
-        categories=categories,
-        min_rating=min_rating,
-        search=None,
-        sort_by="distance",
-        db=db
-    )
+    """Lấy các địa điểm gần vị trí user, sort theo distance."""
+    try:
+        category_array = [c.strip() for c in categories.split(",") if c.strip()] if categories else None
+        
+        response = db.rpc("get_places_advanced_v2", {
+            "p_location": None,
+            "p_lat": lat,
+            "p_lon": lon,
+            "p_categories": category_array,
+            "p_min_rating": min_rating,
+            "p_max_distance": radius,
+            "p_price_levels": None,
+            "p_amenities_jsonb": None,
+            "p_sort_options": ["distance"],
+            "p_limit": limit
+        }).execute()
+        
+        places = response.data if response.data else []
+        
+        for place in places:
+            if place.get("distance_km") is not None:
+                place["distance_m"] = int(float(place["distance_km"]) * 1000)
+            else:
+                place["distance_m"] = None
+            if "images" not in place or place["images"] is None:
+                place["images"] = []
+        
+        return places
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi: {str(e)}")
 
 
 @router.get("/categories", response_model=List[str])
@@ -407,7 +281,8 @@ async def delete_place(
     db: Client = Depends(get_db)
 ):
     """
-    Xóa địa điểm (và các comments, images liên quan).
+    Xóa địa điểm.
+    Trigger `trigger_delete_place_cascade` sẽ tự động xóa images/comments liên quan.
     
     - **place_id**: UUID của địa điểm
     """
@@ -420,13 +295,7 @@ async def delete_place(
                 detail=f"Không tìm thấy địa điểm với id {place_id}"
             )
         
-        # Xóa images liên quan
-        db.table('images').delete().eq('place_id', place_id).execute()
-        
-        # Xóa comments liên quan
-        db.table('comments').delete().eq('place_id', place_id).execute()
-        
-        # Delete place
+        # Delete place - trigger sẽ cascade delete images và comments
         db.table('places').delete().eq('id', place_id).execute()
         
         return {"message": "Đã xóa địa điểm thành công", "id": place_id}

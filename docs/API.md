@@ -32,7 +32,7 @@ Hiện tại API sử dụng header `X-User-ID` để xác thực user. Trong t�
 ### 1. Lấy ảnh của địa điểm
 
 ```http
-GET /api/images/places/{place_id}/images
+GET /api/places/{place_id}/images
 ```
 
 **Parameters:**
@@ -61,7 +61,7 @@ GET /api/images/places/{place_id}/images
 ### 2. Lấy ảnh của comment
 
 ```http
-GET /api/images/comments/{comment_id}/images
+GET /api/comments/{comment_id}/images
 ```
 
 **Parameters:**
@@ -90,7 +90,7 @@ GET /api/images/comments/{comment_id}/images
 ### 3. Upload ảnh
 
 ```http
-POST /api/images/upload
+POST /api/upload
 ```
 
 **Headers:**
@@ -135,7 +135,7 @@ POST /api/images/upload
 ### 1. Lấy comments của địa điểm
 
 ```http
-GET /api/comments/places/{place_id}/comments
+GET /api/places/{place_id}/comments
 ```
 
 **Parameters:**
