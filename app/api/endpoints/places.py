@@ -25,7 +25,7 @@ async def get_places(
     categories: Optional[str] = Query(None, description="Categories (phân cách bằng dấu phẩy)"),
     min_rating: Optional[float] = Query(None, ge=0, le=5, description="Rating tối thiểu"),
     search: Optional[str] = Query(None, description="Tìm kiếm theo tên"),
-    sort_by: Optional[str] = Query("rating", description="Sắp xếp: rating, distance, rating_count"),
+    sort_by: Optional[str] = Query("rating", description="Sắp xếp: rating, distance, popularity"),
     db: Client = Depends(get_db)
 ):
     """Lấy danh sách địa điểm với filters. Sử dụng RPC get_places_advanced_v2."""
@@ -36,7 +36,7 @@ async def get_places(
             category_array = [c.strip() for c in categories.split(",") if c.strip()]
         
         # sort_options phải là array
-        sort_options_array = [sort_by] if sort_by else ["rating"]
+        sort_options_array = [s.strip() for s in sort_by.split(",")] if sort_by else ["rating"]
         
         # Gọi RPC function
         response = db.rpc("get_places_advanced_v2", {
