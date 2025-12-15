@@ -13,7 +13,12 @@ sys.path.append(str(Path(__file__).parent.parent))
 # Import settings and models
 from app.core.config import settings
 from app.db.session import Base
-from app.models import Place  # Import all models
+# Import all models here to ensure they are registered with Base
+# This is required for Alembic autogenerate to detect all tables
+from app.models.place import Place  # noqa: F401
+# Add future model imports here:
+# from app.models.user import User  # noqa: F401
+# from app.models.review import Review  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
