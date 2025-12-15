@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime
 
 from app.core.config import settings
 from app.api.router import api_router
@@ -7,6 +8,7 @@ from app.api.router import api_router
 # Create FastAPI application
 app = FastAPI(
     title=settings.APP_NAME,
+    description="API Backend cho ứng dụng VietSpot - Khám phá địa điểm du lịch Việt Nam",
     version=settings.APP_VERSION,
     debug=settings.DEBUG,
 )
@@ -37,7 +39,11 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": settings.APP_VERSION
+    }
 
 
 if __name__ == "__main__":
