@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from supabase import Client
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_current_user_id
 from app.schemas.comment import CommentResponse
 from app.schemas.user import UserCommentedPlacesResponse
 

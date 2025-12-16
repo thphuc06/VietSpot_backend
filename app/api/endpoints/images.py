@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from typing import List
 from supabase import Client
 
-from app.api.deps import get_user_id_from_header, get_db
+from app.api.deps import get_current_user_id, get_db
 from app.schemas.image import ImageResponse, ImageUploadResponse
 from app.services import storage
 
@@ -59,13 +59,13 @@ async def get_comment_images(
 @router.post("/upload", response_model=ImageUploadResponse)
 async def upload_images(
     files: List[UploadFile] = File(...),
-    user_id: str = Depends(get_user_id_from_header)
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Upload nhiều ảnh lên Supabase Storage.
+    Requires JWT authentication.
     
     - **files**: Danh sách file ảnh (tối đa 5 file)
-    - **X-User-ID**: Header chứa user_id
     
     Returns: Danh sách URLs của ảnh đã upload
     """

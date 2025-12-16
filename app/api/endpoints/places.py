@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
 from supabase import Client
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_current_user_id
 from app.schemas.place import Place, PlaceCreate, PlaceUpdate
 
 router = APIRouter()
@@ -130,6 +130,7 @@ async def get_categories(
         response = db.table("places").select("category").not_.is_("category", "null").execute()
         
         if response.data:
+            print(len(response.data))
             # Lấy unique categories
             categories = list(set(item["category"] for item in response.data if item.get("category")))
             categories.sort()
@@ -189,7 +190,8 @@ async def get_place(
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_place(
     place_in: PlaceCreate,
-    db: Client = Depends(get_db)
+    db: Client = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Tạo địa điểm mới.
@@ -231,7 +233,8 @@ async def create_place(
 async def update_place(
     place_id: str,
     place_in: PlaceUpdate,
-    db: Client = Depends(get_db)
+    db: Client = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Cập nhật thông tin địa điểm.
@@ -278,7 +281,8 @@ async def update_place(
 @router.delete("/{place_id}")
 async def delete_place(
     place_id: str,
-    db: Client = Depends(get_db)
+    db: Client = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Xóa địa điểm.

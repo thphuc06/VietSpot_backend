@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from typing import Optional
 from app.services.orchestrator import ChatbotOrchestrator
+from app.api.deps import get_optional_user_id
 from app.schemas.chat import (
     ChatRequest, 
     ChatResponse, 
@@ -19,7 +21,10 @@ itineraries_db = {}
 
 
 @router.post("", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    user_id: Optional[str] = Depends(get_optional_user_id)
+):
     """
     Main chat endpoint
     
@@ -29,6 +34,8 @@ async def chat(request: ChatRequest):
     - user_lat: User's latitude (optional)
     - user_lon: User's longitude (optional)
     
+    Optional JWT authentication for personalized recommendations.
+    
     Returns:
     - answer: Generated response from Gemini
     - places: List of recommended places
@@ -37,6 +44,7 @@ async def chat(request: ChatRequest):
     - user_location: User's coordinates if provided
     """
     try:
+        # user_id can be used for personalized recommendations if needed
         response = await orchestrator.process_query(request)
         return response
     except Exception as e:
@@ -64,8 +72,11 @@ async def get_chat_config():
 
 
 @router.post("/itinerary/save", response_model=ItinerarySaveResponse)
-async def save_itinerary(request: ItinerarySaveRequest):
-    """Save an itinerary for a session"""
+async def save_itinerary(
+    request: ItinerarySaveRequest,
+    user_id: Optional[str] = Depends(get_optional_user_id)
+):
+    """Save an itinerary for a session. Optional JWT authentication."""
     try:
         session_id = request.session_id
         title = request.title
