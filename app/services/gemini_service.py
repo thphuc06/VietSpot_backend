@@ -92,8 +92,9 @@ Phân tích câu hỏi của người dùng và trả về thông tin dưới d�
     "category": "loại hình địa điểm (restaurant, cafe, hotel, tourist_attraction, etc.) nếu có, null nếu không",
     "radius_km": số km nếu người dùng đề cập (ví dụ: "gần tôi 2km" -> 2), null nếu không,
     "number_of_places": số lượng địa điểm nếu người dùng yêu cầu, null nếu không,
-    "vietnamese_query": "câu hỏi đã sửa lỗi chính tả và dịch sang tiếng Việt chuẩn",
-    "corrected_query": "câu hỏi đã được sửa lỗi chính tả, dùng cho keyword search và embedding"
+    "vietnamese_query": "câu hỏi đã dịch sang tiếng Việt chuẩn (dùng cho semantic search)",
+    "corrected_query": "câu hỏi đã được sửa lỗi chính tả (giữ nguyên ngôn ngữ gốc)",
+    "original_language": "ngôn ngữ gốc của câu hỏi: 'vi' (tiếng Việt), 'en' (English), 'zh' (Chinese), etc."
 }}
 
 Quy tắc phân loại (QUAN TRỌNG - ưu tiên theo thứ tự):
@@ -167,10 +168,12 @@ Trả lời bằng tiếng Việt, ngắn gọn và dễ hiểu.
         user_prompt: str, 
         places: list, 
         max_places: int = 5,
-        weather_data: dict = None
+        weather_data: dict = None,
+        original_language: str = "vi"
     ) -> tuple[list, str]:
         """
         Let Gemini select relevant places AND generate final response in ONE request
+        Responds in the user's original language
         Returns: (selected_places, answer_text)
         """
         if not places:
@@ -218,6 +221,19 @@ Thông tin thời tiết hiện tại:
 - Độ ẩm: {weather_data.get('humidity', 'N/A')}%
 """
         
+        # Determine response language based on original_language
+        language_instruction = "Trả lời bằng tiếng Việt tự nhiên, thân thiện"
+        if original_language == "en":
+            language_instruction = "Respond in natural, friendly English"
+        elif original_language == "zh":
+            language_instruction = "用自然友好的中文回答"
+        elif original_language == "ja":
+            language_instruction = "自然で親しみやすい日本語で回答してください"
+        elif original_language == "ko":
+            language_instruction = "자연스럽고 친근한 한국어로 답변하세요"
+        elif original_language != "vi":
+            language_instruction = f"Respond in the user's language ({original_language}), naturally and friendly"
+        
         combined_prompt = f"""
 Bạn là trợ lý du lịch thông minh VietSpot. Nhiệm vụ của bạn:
 1. CHỌN các địa điểm PHÙ HỢP NHẤT từ danh sách
@@ -235,7 +251,7 @@ BƯỚC 1: CHỌN ĐỊA ĐIỂM
 - Ưu tiên: đánh giá cao, thông tin rõ ràng, gần người dùng, phù hợp ngữ cảnh
 
 BƯỚC 2: TẠO CÂU TRẢ LỜI
-- Trả lời bằng tiếng Việt tự nhiên, thân thiện
+- {language_instruction}
 - Sử dụng markdown với **bold** cho tên địa điểm
 
 Trả về JSON với cấu trúc:

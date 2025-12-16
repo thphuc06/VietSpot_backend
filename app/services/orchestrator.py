@@ -92,7 +92,8 @@ class ChatbotOrchestrator:
             user_prompt=user_prompt,
             places=candidate_places,
             max_places=top_k,
-            weather_data=weather_data
+            weather_data=weather_data,
+            original_language=classification.original_language
         )
         print(f"✅ Gemini selected {len(selected_places)} places and generated response")
         
@@ -203,11 +204,12 @@ class ChatbotOrchestrator:
             top_n = classification.number_of_places or settings.TOP_N_SEMANTIC_RESULTS
             top_n = max(top_n * 2, settings.TOP_N_SEMANTIC_RESULTS)
             
-            semantic_query = classification.corrected_query
+            # Use vietnamese_query for semantic search (better for Vietnamese embedding model)
+            semantic_query = classification.vietnamese_query
             if classification.location_mentioned:
-                semantic_query = f"{classification.corrected_query} ở {classification.location_mentioned}"
+                semantic_query = f"{classification.vietnamese_query} ở {classification.location_mentioned}"
             
-            print(f"Semantic search query: {semantic_query}")
+            print(f"Semantic search query (Vietnamese): {semantic_query}")
             places = self.semantic.hybrid_search(
                 query=semantic_query,
                 keyword_places=places,

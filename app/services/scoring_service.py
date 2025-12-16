@@ -43,14 +43,14 @@ class ScoringService:
     
     def calculate_popularity_score(self, place: Dict[str, Any]) -> float:
         """
-        Calculate popularity based on various factors
+        Calculate popularity based on rating_count
         """
-        num_reviews = place.get('num_reviews', 0)
-        num_checkins = place.get('num_checkins', 0)
+        # Dùng rating_count thay vì num_reviews (không tồn tại)
+        rating_count = place.get('rating_count', 0) or 0
         
-        # Simple popularity score
-        popularity = (num_reviews * 0.6 + num_checkins * 0.4) / 100
-        return min(popularity, 1.0)
+        # Normalize: 100+ reviews = score 1.0
+        popularity = min(rating_count / 100, 1.0)
+        return popularity
     
     def calculate_combined_score(
         self,

@@ -54,6 +54,7 @@ class QueryClassification(BaseModel):
     max_rating: Optional[float] = None
     vietnamese_query: str = Field(..., description="Query translated to Vietnamese")
     corrected_query: str = Field(..., description="Spell-checked and corrected query")
+    original_language: str = Field(default="vi", description="Original language of user query: vi, en, etc.")
 
 
 class ItinerarySaveRequest(BaseModel):
