@@ -42,7 +42,8 @@ class ChatResponse(BaseModel):
 class QueryClassification(BaseModel):
     """Classification result from Gemini"""
     query_type: str = Field(..., description="general_query, nearby_search, specific_search")
-    keywords: List[str] = Field(default_factory=list, description="Extracted keywords")
+    keywords: List[str] = Field(default_factory=list, description="Extracted keywords - should be location names for search")
+    keyword_variants: List[str] = Field(default_factory=list, description="All variants of keywords for better search matching")
     location_mentioned: Optional[str] = None
     city: Optional[str] = None
     district: Optional[str] = None
@@ -52,6 +53,7 @@ class QueryClassification(BaseModel):
     number_of_places: Optional[int] = None
     min_rating: Optional[float] = None
     max_rating: Optional[float] = None
+    needs_semantic_search: bool = Field(default=False, description="True if query has contextual meaning requiring semantic search")
     vietnamese_query: str = Field(..., description="Query translated to Vietnamese")
     corrected_query: str = Field(..., description="Spell-checked and corrected query")
     original_language: str = Field(default="vi", description="Original language of user query: vi, en, etc.")

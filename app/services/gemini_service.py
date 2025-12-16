@@ -32,8 +32,8 @@ class GeminiService:
     
     def _setup_credentials(self):
         """Setup Google Cloud credentials from environment variable"""
-        # Check if credentials JSON is provided as environment variable
-        credentials_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+        # Check if credentials JSON is provided via settings (loaded from .env)
+        credentials_json = settings.GOOGLE_CREDENTIALS_JSON
         
         if credentials_json:
             # Write credentials to a temporary file
@@ -45,7 +45,7 @@ class GeminiService:
                 
                 # Set the path for Google libraries to find
                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = path
-                print(f"✅ Loaded Google credentials from environment variable")
+                print(f"✅ Loaded Google credentials from GOOGLE_CREDENTIALS_JSON")
             except Exception as e:
                 print(f"⚠️ Error setting up credentials: {e}")
         else:
@@ -82,27 +82,75 @@ Phân tích câu hỏi của người dùng và trả về thông tin dưới d�
 
 {{
     "query_type": "general_query" hoặc "nearby_search" hoặc "specific_search",
-    "keywords": ["từ khóa 1", "từ khóa 2", ...],
-    "location_mentioned": "tên địa điểm chuẩn hóa (đã sửa lỗi chính tả) nếu có, null nếu không",
-    "city": "tên thành phố/tỉnh đã chuẩn hóa (ví dụ: 'Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng'), null nếu không có",
-    "district": "tên quận/huyện/phường đã chuẩn hóa (ví dụ: 'Quận 1', 'Bình Thạnh', 'Hoàn Kiếm'), null nếu không có",
-    "min_rating": số rating tối thiểu (1.0-5.0) nếu người dùng yêu cầu, null nếu không,
-    "max_rating": số rating tối đa (1.0-5.0) nếu người dùng yêu cầu, null nếu không,
+    "keywords": ["từ khóa chính TIẾNG VIỆT để search trong database"],
+    "keyword_variants": ["tất cả biến thể của từ khóa để search"],
+    "location_mentioned": "tên địa điểm chuẩn hóa TIẾNG VIỆT (đã sửa lỗi chính tả) nếu có, null nếu không",
+    "city": "tên thành phố/tỉnh đã chuẩn hóa TIẾNG VIỆT (ví dụ: 'Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng'), null nếu không có",
+    "district": "tên quận/huyện/phường đã chuẩn hóa TIẾNG VIỆT (ví dụ: 'Quận 1', 'Bình Thạnh', 'Hoàn Kiếm'), null nếu không có",
+    "min_rating": số rating tối thiểu (1.0-5.0), null nếu không yêu cầu,
+    "max_rating": số rating tối đa (1.0-5.0), null nếu không yêu cầu,
     "price_range": "cheap/moderate/expensive nếu có đề cập, null nếu không",
     "category": "loại hình địa điểm (restaurant, cafe, hotel, tourist_attraction, etc.) nếu có, null nếu không",
     "radius_km": số km nếu người dùng đề cập (ví dụ: "gần tôi 2km" -> 2), null nếu không,
     "number_of_places": số lượng địa điểm nếu người dùng yêu cầu, null nếu không,
+    "needs_semantic_search": true hoặc false,
     "vietnamese_query": "câu hỏi đã dịch sang tiếng Việt chuẩn (dùng cho semantic search)",
     "corrected_query": "câu hỏi đã được sửa lỗi chính tả (giữ nguyên ngôn ngữ gốc)",
     "original_language": "ngôn ngữ gốc của câu hỏi: 'vi' (tiếng Việt), 'en' (English), 'zh' (Chinese), etc."
 }}
 
-Quy tắc phân loại (QUAN TRỌNG - ưu tiên theo thứ tự):
-1. "general_query": Câu hỏi chung, không liên quan đến địa điểm cụ thể
+QUY TẮC QUAN TRỌNG CHO keyword_variants (SINH BIẾN THỂ ĐỂ SEARCH):
+- Tạo TẤT CẢ biến thể của từ khóa để match trong database:
+  + Tiếng Việt có dấu và không dấu: "cà phê" -> ["cà phê", "ca phe"]
+  + Tiếng Anh tương đương: "cà phê" -> ["cafe", "coffee"]
+  + Các cách viết khác: "nhà hàng" -> ["nhà hàng", "nha hang", "restaurant", "quán ăn"]
+  + Tên địa danh: "Hồ Chí Minh" -> ["Hồ Chí Minh", "Ho Chi Minh", "HCM", "Sài Gòn", "Saigon"]
+- Ví dụ: "quán cà phê yên tĩnh ở HCM" -> keyword_variants: ["cà phê", "ca phe", "cafe", "coffee", "Hồ Chí Minh", "Ho Chi Minh", "HCM", "Sài Gòn"]
+- Ví dụ: "trà sữa Quận 1" -> keyword_variants: ["trà sữa", "tra sua", "milk tea", "boba", "Quận 1", "Quan 1", "District 1"]
 
-2. "nearby_search": ƯU TIÊN CAO NHẤT - Khi có BẤT KỲ từ nào sau: "gần tôi", "gần đây", "xung quanh", "quanh đây", "nearby", "around me", "trong vòng", "cách tôi"
+QUY TẮC QUAN TRỌNG CHO RATING:
+- Nếu người dùng yêu cầu rating CỤ THỂ (ví dụ: "rating 4.5", "đánh giá 4.5 sao"):
+  + min_rating = max_rating = số đó (ví dụ: min_rating: 4.5, max_rating: 4.5)
+- Nếu người dùng yêu cầu "rating > X" hoặc "trên X sao" hoặc "greater than X":
+  + min_rating = X, max_rating = null
+- Nếu người dùng yêu cầu "rating < X" hoặc "dưới X sao" hoặc "less than X":
+  + min_rating = null, max_rating = X
+- Nếu không đề cập rating: cả hai đều null
 
-3. "specific_search": CHỈ khi có ĐỊA ĐIỂM CỤ THỂ (tên thành phố/quận) VÀ KHÔNG có "gần tôi"
+QUY TẮC QUAN TRỌNG CHO KEYWORDS VÀ LOCATION (BẮT BUỘC TIẾNG VIỆT):
+- Keywords và location_mentioned PHẢI là TIẾNG VIỆT CÓ DẤU để match với database
+- LUÔN chuyển đổi tên địa danh sang tiếng Việt chuẩn:
+  + "Ho Chi Minh" / "HCM" / "Saigon" -> "Hồ Chí Minh"
+  + "Hanoi" / "Ha Noi" -> "Hà Nội"
+  + "Da Nang" / "Danang" -> "Đà Nẵng"
+  + "District 1" / "Quan 1" -> "Quận 1"
+  + "Binh Thanh" -> "Bình Thạnh"
+- KHÔNG đưa từ chung chung như "places", "địa điểm", "quán" vào keywords
+- Ví dụ: "places in Ho Chi Minh" -> keywords: ["Hồ Chí Minh"], location_mentioned: "Hồ Chí Minh"
+- Ví dụ: "cafe in District 1" -> keywords: ["Quận 1"], location_mentioned: "Quận 1"
+- Ví dụ: "restaurant in Da Nang" -> keywords: ["Đà Nẵng"], location_mentioned: "Đà Nẵng"
+
+QUY TẮC CHO needs_semantic_search:
+- TRUE: Khi câu hỏi có NGỮ CẢNH/TÍNH CHẤT cần hiểu ngữ nghĩa:
+  + "yên tĩnh", "lãng mạn", "view đẹp", "hóng mát", "không gian thoáng"
+  + "phù hợp gia đình", "cho cặp đôi", "check-in đẹp"
+  + Các tính từ mô tả không có trong database
+- FALSE: Khi câu hỏi CHỈ CÓ filter cơ bản:
+  + Chỉ có location + rating ("places in HCM rating > 4")
+  + Chỉ có location + category ("cafe ở Quận 1")
+  + Chỉ có location + price ("nhà hàng rẻ ở Đà Nẵng")
+
+Quy tắc phân loại query_type (QUAN TRỌNG - ƯU TIÊN THEO THỨ TỰ):
+1. "general_query": ƯU TIÊN CAO NHẤT - Câu hỏi KHÔNG liên quan đến địa điểm/du lịch:
+   + Hỏi về thời gian: "hôm nay thứ mấy", "mấy giờ rồi", "ngày bao nhiêu"
+   + Hỏi về thời tiết chung: "trời có mưa không", "nhiệt độ bao nhiêu"
+   + Hỏi về kiến thức: "ai là tổng thống Mỹ", "python là gì"
+   + Chào hỏi: "xin chào", "hello", "bạn khỏe không"
+   + Câu hỏi không yêu cầu tìm kiếm địa điểm
+
+2. "nearby_search": Khi có "gần tôi", "gần đây", "xung quanh", "nearby", "around me"
+
+3. "specific_search": CHỈ khi YÊU CẦU TÌM ĐỊA ĐIỂM và có tên thành phố/quận cụ thể
 
 Câu hỏi của người dùng: "{user_prompt}"
 
@@ -134,6 +182,7 @@ Chỉ trả về JSON, không thêm giải thích.
             return QueryClassification(
                 query_type="specific_search",
                 keywords=[],
+                needs_semantic_search=True,  # Default to True for safety
                 vietnamese_query=user_prompt,
                 corrected_query=user_prompt
             )
@@ -247,7 +296,8 @@ Danh sách địa điểm ứng viên ({len(places_info)} địa điểm):
 {weather_text}
 
 BƯỚC 1: CHỌN ĐỊA ĐIỂM
-- Chọn TỐI ĐA {max_places} địa điểm phù hợp nhất
+- Chọn ĐÚNG {max_places} địa điểm (hoặc tất cả nếu ít hơn {max_places} địa điểm phù hợp)
+- NẾU người dùng yêu cầu số lượng cụ thể (ví dụ: "12 quán"), PHẢI chọn đủ số đó
 - Ưu tiên: đánh giá cao, thông tin rõ ràng, gần người dùng, phù hợp ngữ cảnh
 
 BƯỚC 2: TẠO CÂU TRẢ LỜI

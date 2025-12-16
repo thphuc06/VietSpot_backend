@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Google Gemini (Legacy API Key - kept for fallback)
     GEMINI_API_KEY: Optional[str] = None
     
+    # Google Cloud Credentials (JSON string for cloud deployment)
+    GOOGLE_CREDENTIALS_JSON: Optional[str] = None
+    
     # Vertex AI Configuration
     VERTEX_PROJECT_ID: str = "scrape-food1"
     VERTEX_LOCATION: str = "global"

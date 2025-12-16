@@ -19,22 +19,56 @@ class PlaceSupabaseService:
         price_range: Optional[str] = None,
         category: Optional[str] = None,
         min_rating: Optional[float] = None,
-        max_rating: Optional[float] = None
+        max_rating: Optional[float] = None,
+        keyword_variants: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
-        Search places by name, address, and rating only
+        Search places by address for location terms, and by name for place names.
+        Uses OR logic: match ANY keyword variant
         """
         try:
             query = self.client.table(self.places_table).select("*")
             
-            if keywords and len(keywords) > 0:
-                main_keyword = keywords[0]
-                print(f"DEBUG: Searching with main keyword: '{main_keyword}'")
-                query = query.ilike("address", f"%{main_keyword}%")
+            # Known city/district names (search only in address)
+            city_district_keywords = [
+                'hồ chí minh', 'ho chi minh', 'hcm', 'sài gòn', 'saigon',
+                'hà nội', 'ha noi', 'hanoi',
+                'đà nẵng', 'da nang', 'danang',
+                'quận', 'quan', 'district', 'phường', 'phuong', 'ward',
+                'bình thạnh', 'binh thanh', 'thủ đức', 'thu duc',
+                'tân bình', 'tan binh', 'gò vấp', 'go vap',
+            ]
             
+            # Combine all search terms
+            all_search_terms = []
+            if keyword_variants and len(keyword_variants) > 0:
+                all_search_terms.extend(keyword_variants)
+            if keywords:
+                all_search_terms.extend(keywords)
             if location:
-                print(f"DEBUG: Adding location filter: {location}")
-                query = query.ilike("address", f"%{location}%")
+                all_search_terms.append(location)
+            
+            # Remove duplicates
+            all_search_terms = list(set([term for term in all_search_terms if term and term.strip()]))
+            
+            if all_search_terms:
+                or_filters = []
+                for term in all_search_terms:
+                    term_lower = term.lower()
+                    # Check if term is a city/district (search address only)
+                    is_location_term = any(loc in term_lower for loc in city_district_keywords)
+                    
+                    if is_location_term:
+                        # Location terms: search in address only
+                        or_filters.append(f"address.ilike.%{term}%")
+                    else:
+                        # Place names (Chợ Bến Thành, Highlands, etc.): search in BOTH name and address
+                        or_filters.append(f"name.ilike.%{term}%")
+                        or_filters.append(f"address.ilike.%{term}%")
+                
+                filter_string = ",".join(or_filters)
+                print(f"DEBUG: Searching with {len(all_search_terms)} terms: {all_search_terms[:5]}...")
+                query = query.or_(filter_string)
             
             if min_rating is not None:
                 print(f"DEBUG: Adding min_rating filter: {min_rating}")
@@ -43,20 +77,35 @@ class PlaceSupabaseService:
                 print(f"DEBUG: Adding max_rating filter: {max_rating}")
                 query = query.lte("rating", max_rating)
             
-            print(f"DEBUG: Executing query without limit...")
+            print(f"DEBUG: Executing query...")
             response = query.execute()
             print(f"DEBUG: Raw response data length: {len(response.data)}")
-            final_data = response.data
             
-            # Parse coordinates JSON for each result
+            # Parse coordinates and calculate match score
             places = []
-            for place in final_data:
+            for place in response.data:
                 if place.get('coordinates'):
                     import json
                     coords = json.loads(place['coordinates']) if isinstance(place['coordinates'], str) else place['coordinates']
                     place['latitude'] = coords.get('lat')
                     place['longitude'] = coords.get('lon')
+                
+                # Calculate match score
+                name = (place.get('name') or '').lower()
+                address = (place.get('address') or '').lower()
+                match_count = 0
+                for term in all_search_terms:
+                    term_lower = term.lower()
+                    if term_lower in name:
+                        match_count += 2  # Name match worth more
+                    if term_lower in address:
+                        match_count += 1
+                place['keyword_match_score'] = match_count
+                
                 places.append(place)
+            
+            # Sort by match score
+            places.sort(key=lambda x: x.get('keyword_match_score', 0), reverse=True)
             
             return places
             

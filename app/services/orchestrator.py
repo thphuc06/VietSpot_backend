@@ -37,6 +37,9 @@ class ChatbotOrchestrator:
         print(f"✅ Corrected query: {classification.corrected_query}")
         print(f"Query classification: {classification.query_type}")
         print(f"Keywords: {classification.keywords}")
+        print(f"Location: {classification.location_mentioned}")
+        print(f"Number of places requested: {classification.number_of_places}")
+        print(f"Needs semantic search: {classification.needs_semantic_search}")
         
         # Step 2: Handle general queries directly
         if classification.query_type == "general_query":
@@ -83,7 +86,7 @@ class ChatbotOrchestrator:
         candidate_places = self.scoring.rank_places(
             places, 
             has_user_location=has_user_location,
-            top_k=top_k * 3  # Get 3x more candidates for Gemini to select from
+            top_k=top_k * 5  # Get 3x more candidates for Gemini to select from
         )
         
         # Step 7: Let Gemini select places AND generate response
@@ -178,7 +181,8 @@ class ChatbotOrchestrator:
         # Keyword search for specific queries
         elif classification.query_type == "specific_search":
             corrected_keywords = classification.keywords
-            print(f"🔍 Performing keyword search with corrected keywords: {corrected_keywords}")
+            variants = classification.keyword_variants if hasattr(classification, 'keyword_variants') else []
+            print(f"🔍 Performing keyword search with keywords: {corrected_keywords}, variants: {variants}")
             print(f"   Rating filter: {classification.min_rating} - {classification.max_rating}")
             places = self.supabase.keyword_search(
                 keywords=corrected_keywords,
@@ -186,7 +190,8 @@ class ChatbotOrchestrator:
                 price_range=classification.price_range,
                 category=classification.category,
                 min_rating=classification.min_rating,
-                max_rating=classification.max_rating
+                max_rating=classification.max_rating,
+                keyword_variants=variants
             )
             
             if not places and classification.keywords:
@@ -198,18 +203,37 @@ class ChatbotOrchestrator:
             print("No results from any search, fetching places for semantic search")
             places = self.supabase.get_all_places(limit=5000)
         
-        # Semantic search on filtered/all places
-        if places:
-            print(f"Performing semantic search on {len(places)} places")
+        # Only run semantic search if query has contextual meaning that needs understanding
+        if places and classification.needs_semantic_search:
+            print(f"🔍 Performing semantic search on {len(places)} places (query has contextual meaning)")
             top_n = classification.number_of_places or settings.TOP_N_SEMANTIC_RESULTS
             top_n = max(top_n * 2, settings.TOP_N_SEMANTIC_RESULTS)
             
-            # Use vietnamese_query for semantic search (better for Vietnamese embedding model)
+            # Use vietnamese_query for semantic search - only embed context/meaning
+            # Remove location and number from query to focus on semantic meaning
             semantic_query = classification.vietnamese_query
-            if classification.location_mentioned:
-                semantic_query = f"{classification.vietnamese_query} ở {classification.location_mentioned}"
             
-            print(f"Semantic search query (Vietnamese): {semantic_query}")
+            # Remove location from semantic query
+            if classification.location_mentioned:
+                semantic_query = semantic_query.replace(f"ở {classification.location_mentioned}", "")
+                semantic_query = semantic_query.replace(f"tại {classification.location_mentioned}", "")
+                semantic_query = semantic_query.replace(f"in {classification.location_mentioned}", "")
+                semantic_query = semantic_query.replace(classification.location_mentioned, "")
+            
+            # Remove number of places from query (e.g., "12 quán" -> "quán")
+            if classification.number_of_places:
+                import re
+                # Remove patterns like "12 ", "3 ", etc. at start or in middle
+                semantic_query = re.sub(r'\b\d+\s+', '', semantic_query)
+            
+            # Remove common request phrases
+            remove_phrases = ['cho tôi', 'tìm cho tôi', 'tìm', 'gợi ý', 'đề xuất', 'liệt kê', 'show me', 'find', 'give me']
+            for phrase in remove_phrases:
+                semantic_query = semantic_query.replace(phrase, '')
+            
+            semantic_query = ' '.join(semantic_query.split()).strip()  # Clean up whitespace
+            
+            print(f"Semantic search query (context only): {semantic_query}")
             places = self.semantic.hybrid_search(
                 query=semantic_query,
                 keyword_places=places,
@@ -222,11 +246,14 @@ class ChatbotOrchestrator:
                 filtered_places = []
                 for place in places:
                     address = place.get('address', '').lower()
-                    if any(keyword.lower() in address for keyword in classification.keywords):
+                    location_lower = classification.location_mentioned.lower()
+                    if location_lower in address:
                         filtered_places.append(place)
                 
                 if len(filtered_places) > 0:
                     print(f"Filtered to {len(filtered_places)} places matching location in address")
                     places = filtered_places
+        elif places:
+            print(f"⏭️ Skipping semantic search (query has no contextual meaning, using {len(places)} keyword results directly)")
         
         return places
