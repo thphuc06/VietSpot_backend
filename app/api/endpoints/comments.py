@@ -9,7 +9,7 @@ from supabase import Client
 from datetime import datetime
 import uuid
 
-from app.api.deps import get_user_id_from_header, get_db
+from app.api.deps import get_current_user_id, get_db
 from app.schemas.comment import (
     CommentResponse,
     CreateCommentRequest,
@@ -47,15 +47,15 @@ async def get_place_comments(
 @router.post("/comments", response_model=APIResponse)
 async def create_comment(
     request: CreateCommentRequest,
-    db: Client = Depends(get_db)
+    db: Client = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Tạo comment mới cho một địa điểm.
-    Sử dụng RPC create_user_content (tự động tạo guest user nếu cần).
+    Requires JWT authentication.
     """
     try:
-        # Generate user_id nếu không có
-        user_id = request.user_id if request.user_id and request.user_id.strip() else str(uuid.uuid4())
+        # Use authenticated user_id from JWT token
         
         # Gọi RPC function - xử lý tất cả: validate place, tạo user, insert comment + images
         response = db.rpc("create_user_content", {
@@ -95,14 +95,14 @@ async def create_comment(
 async def update_comment(
     comment_id: str,
     request: UpdateCommentRequest,
-    user_id: str = Depends(get_user_id_from_header),
+    user_id: str = Depends(get_current_user_id),
     db: Client = Depends(get_db)
 ):
     """
     Chỉnh sửa comment (chỉ owner mới được sửa).
+    Requires JWT authentication.
     
     - **comment_id**: UUID của comment cần sửa
-    - **X-User-ID**: Header chứa user_id
     """
     try:
         # Kiểm tra comment tồn tại và quyền sở hữu
@@ -149,15 +149,15 @@ async def update_comment(
 @router.delete("/comments/{comment_id}", response_model=APIResponse)
 async def delete_comment(
     comment_id: str,
-    user_id: str = Depends(get_user_id_from_header),
+    user_id: str = Depends(get_current_user_id),
     db: Client = Depends(get_db)
 ):
     """
     Xóa comment (chỉ owner mới được xóa).
     Trigger `trigger_update_place_rating` sẽ tự động cập nhật rating của place.
+    Requires JWT authentication.
     
     - **comment_id**: UUID của comment cần xóa
-    - **X-User-ID**: Header chứa user_id
     """
     try:
         # Kiểm tra comment tồn tại và quyền sở hữu
@@ -193,15 +193,15 @@ async def delete_comment(
 async def add_images_to_comment(
     comment_id: str,
     request: AddImagesToCommentRequest,
-    user_id: str = Depends(get_user_id_from_header),
+    user_id: str = Depends(get_current_user_id),
     db: Client = Depends(get_db)
 ):
     """
     Thêm ảnh vào comment đã có.
+    Requires JWT authentication.
     
     - **comment_id**: UUID của comment
     - **image_urls**: Danh sách URLs ảnh (đã upload trước đó)
-    - **X-User-ID**: Header chứa user_id
     """
     try:
         # Kiểm tra comment tồn tại và quyền sở hữu
@@ -247,15 +247,15 @@ async def add_images_to_comment(
 async def delete_comment_image(
     comment_id: str,
     image_id: str,
-    user_id: str = Depends(get_user_id_from_header),
+    user_id: str = Depends(get_current_user_id),
     db: Client = Depends(get_db)
 ):
     """
     Xóa một ảnh khỏi comment.
+    Requires JWT authentication.
     
     - **comment_id**: UUID của comment
     - **image_id**: UUID của ảnh cần xóa
-    - **X-User-ID**: Header chứa user_id
     """
     try:
         # Kiểm tra comment tồn tại và quyền sở hữu
