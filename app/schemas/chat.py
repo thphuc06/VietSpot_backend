@@ -34,23 +34,26 @@ class ChatResponse(BaseModel):
     """Response model for chat endpoint"""
     answer: str = Field(..., description="Gemini's generated answer")
     places: List[PlaceInfo] = Field(default_factory=list, description="Recommended places")
-    query_type: str = Field(..., description="Type of query: general, nearby, specific")
+    query_type: str = Field(..., description="Type of query: general, nearby, specific, itinerary")
     total_places: int = Field(default=0, description="Total number of places found")
     user_location: Optional[Dict[str, float]] = None
+    itinerary: Optional[Dict[str, Any]] = Field(None, description="Generated itinerary if query_type is itinerary")
 
 
 class QueryClassification(BaseModel):
     """Classification result from Gemini"""
-    query_type: str = Field(..., description="general_query, nearby_search, specific_search")
+    query_type: str = Field(..., description="general_query, nearby_search, specific_search, itinerary_request")
     keywords: List[str] = Field(default_factory=list, description="Extracted keywords - should be location names for search")
     keyword_variants: List[str] = Field(default_factory=list, description="All variants of keywords for better search matching")
     location_mentioned: Optional[str] = None
     city: Optional[str] = None
     district: Optional[str] = None
     price_range: Optional[str] = None
+    budget_amount: Optional[int] = Field(None, description="Budget amount in VND (e.g., 2000000 for 2 million)")
     category: Optional[str] = None
     radius_km: Optional[float] = None
     number_of_places: Optional[int] = None
+    num_days: Optional[int] = Field(None, description="Number of days for itinerary request")
     min_rating: Optional[float] = None
     max_rating: Optional[float] = None
     needs_semantic_search: bool = Field(default=False, description="True if query has contextual meaning requiring semantic search")

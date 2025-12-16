@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoints import places, comments, images, users, chat
+from app.api.endpoints import places, comments, images, users, chat, itinerary
 
 api_router = APIRouter()
 
@@ -34,4 +34,11 @@ api_router.include_router(
 api_router.include_router(
     chat.router,
     tags=["Chat"]
+)
+
+# Itinerary - Travel itinerary generation
+api_router.include_router(
+    itinerary.router,
+    prefix="/itinerary",
+    tags=["Itinerary"]
 )

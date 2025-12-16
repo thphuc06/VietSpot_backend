@@ -81,7 +81,7 @@ class GeminiService:
 Phân tích câu hỏi của người dùng và trả về thông tin dưới dạng JSON với cấu trúc sau:
 
 {{
-    "query_type": "general_query" hoặc "nearby_search" hoặc "specific_search",
+    "query_type": "general_query" hoặc "nearby_search" hoặc "specific_search" hoặc "itinerary_request",
     "keywords": ["từ khóa chính TIẾNG VIỆT để search trong database"],
     "keyword_variants": ["tất cả biến thể của từ khóa để search"],
     "location_mentioned": "tên địa điểm chuẩn hóa TIẾNG VIỆT (đã sửa lỗi chính tả) nếu có, null nếu không",
@@ -89,10 +89,12 @@ Phân tích câu hỏi của người dùng và trả về thông tin dưới d�
     "district": "tên quận/huyện/phường đã chuẩn hóa TIẾNG VIỆT (ví dụ: 'Quận 1', 'Bình Thạnh', 'Hoàn Kiếm'), null nếu không có",
     "min_rating": số rating tối thiểu (1.0-5.0), null nếu không yêu cầu,
     "max_rating": số rating tối đa (1.0-5.0), null nếu không yêu cầu,
-    "price_range": "cheap/moderate/expensive nếu có đề cập, null nếu không",
+    "price_range": "low/medium/high nếu có đề cập, null nếu không",
+    "budget_amount": số tiền ngân sách (đơn vị VND), null nếu không đề cập,
     "category": "loại hình địa điểm (restaurant, cafe, hotel, tourist_attraction, etc.) nếu có, null nếu không",
     "radius_km": số km nếu người dùng đề cập (ví dụ: "gần tôi 2km" -> 2), null nếu không,
     "number_of_places": số lượng địa điểm nếu người dùng yêu cầu, null nếu không,
+    "num_days": số ngày du lịch nếu có (cho itinerary), null nếu không,
     "needs_semantic_search": true hoặc false,
     "vietnamese_query": "câu hỏi đã dịch sang tiếng Việt chuẩn (dùng cho semantic search)",
     "corrected_query": "câu hỏi đã được sửa lỗi chính tả (giữ nguyên ngôn ngữ gốc)",
@@ -116,6 +118,15 @@ QUY TẮC QUAN TRỌNG CHO RATING:
 - Nếu người dùng yêu cầu "rating < X" hoặc "dưới X sao" hoặc "less than X":
   + min_rating = null, max_rating = X
 - Nếu không đề cập rating: cả hai đều null
+
+QUY TẮC CHO BUDGET_AMOUNT (NGÂN SÁCH - ĐƠN VỊ VND):
+- Chuyển đổi số tiền sang VND:
+  + "2tr" / "2 triệu" / "2m" -> 2000000
+  + "500k" / "500 nghìn" -> 500000
+  + "1.5 triệu" -> 1500000
+  + "dưới 2tr" -> budget_amount: 2000000, price_range: "low"
+  + "under 2 million" -> budget_amount: 2000000
+- Nếu không đề cập ngân sách: budget_amount = null
 
 QUY TẮC QUAN TRỌNG CHO KEYWORDS VÀ LOCATION (BẮT BUỘC TIẾNG VIỆT):
 - Keywords và location_mentioned PHẢI là TIẾNG VIỆT CÓ DẤU để match với database
@@ -148,9 +159,16 @@ Quy tắc phân loại query_type (QUAN TRỌNG - ƯU TIÊN THEO THỨ TỰ):
    + Chào hỏi: "xin chào", "hello", "bạn khỏe không"
    + Câu hỏi không yêu cầu tìm kiếm địa điểm
 
-2. "nearby_search": Khi có "gần tôi", "gần đây", "xung quanh", "nearby", "around me"
+2. "itinerary_request": YÊU CẦU LẬP LỊCH TRÌNH DU LỊCH:
+   + Có từ khóa: "lịch trình", "kế hoạch", "itinerary", "plan", "schedule"
+   + Có số ngày: "3 ngày", "2 days", "một tuần"
+   + Ví dụ: "lập lịch trình 3 ngày ở Đà Nẵng", "plan 2 day trip to HCM"
+   + Ví dụ: "tôi muốn đi Hà Nội 5 ngày, giúp tôi lên kế hoạch"
+   + NẾU có yêu cầu lịch trình, PHẢI trích xuất num_days
 
-3. "specific_search": CHỈ khi YÊU CẦU TÌM ĐỊA ĐIỂM và có tên thành phố/quận cụ thể
+3. "nearby_search": Khi có "gần tôi", "gần đây", "xung quanh", "nearby", "around me"
+
+4. "specific_search": CHỈ khi YÊU CẦU TÌM ĐỊA ĐIỂM và có tên thành phố/quận cụ thể
 
 Câu hỏi của người dùng: "{user_prompt}"
 
@@ -391,3 +409,29 @@ Chỉ trả về JSON, không thêm giải thích.
         except Exception as e:
             print(f"❌ Error in select_places_and_generate_response: {e}")
             return places[:max_places], "Dưới đây là các địa điểm gợi ý cho bạn."
+    
+    def generate_with_json(self, prompt: str, temperature: float = 0.7) -> str:
+        """
+        Generate response with JSON output format (for itinerary, structured data)
+        Returns raw JSON string
+        """
+        try:
+            config = GenerateContentConfig(
+                temperature=temperature,
+                top_p=0.95,
+                max_output_tokens=8192,
+                response_modalities=["TEXT"],
+                response_mime_type="application/json"
+            )
+            
+            response = self.client.models.generate_content(
+                model=self.model_id,
+                contents=prompt,
+                config=config
+            )
+            
+            return response.text
+            
+        except Exception as e:
+            print(f"❌ Error in generate_with_json: {e}")
+            raise

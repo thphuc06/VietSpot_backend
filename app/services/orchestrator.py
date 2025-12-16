@@ -3,7 +3,9 @@ from app.services.place_supabase_service import PlaceSupabaseService
 from app.services.semantic_service import SemanticSearchService
 from app.services.weather_service import WeatherService
 from app.services.scoring_service import ScoringService
+from app.services.itinerary_service import ItineraryService
 from app.schemas.chat import ChatRequest, ChatResponse, PlaceInfo, QueryClassification
+from app.schemas.itinerary import ItineraryRequest
 from app.core.config import settings
 from typing import Optional, List, Dict, Any
 
@@ -19,6 +21,7 @@ class ChatbotOrchestrator:
         self.semantic = SemanticSearchService()
         self.weather = WeatherService()
         self.scoring = ScoringService()
+        self.itinerary_service = ItineraryService()
     
     async def process_query(self, request: ChatRequest) -> ChatResponse:
         """
@@ -50,6 +53,12 @@ class ChatbotOrchestrator:
                 query_type="general",
                 total_places=0,
                 user_location={'lat': user_lat, 'lon': user_lon} if has_user_location else None
+            )
+        
+        # Step 2.5: Handle itinerary requests
+        if classification.query_type == "itinerary_request":
+            return await self._handle_itinerary_request(
+                classification, user_prompt, user_lat, user_lon, has_user_location
             )
         
         # Step 3: Determine search strategy
@@ -257,3 +266,124 @@ class ChatbotOrchestrator:
             print(f"⏭️ Skipping semantic search (query has no contextual meaning, using {len(places)} keyword results directly)")
         
         return places
+    
+    async def _handle_itinerary_request(
+        self,
+        classification: QueryClassification,
+        user_prompt: str,
+        user_lat: Optional[float],
+        user_lon: Optional[float],
+        has_user_location: bool
+    ) -> ChatResponse:
+        """
+        Handle itinerary generation request from chatbot
+        """
+        print(f"🗓️ Handling itinerary request...")
+        print(f"   Location: {classification.location_mentioned}")
+        print(f"   Num days: {classification.num_days}")
+        
+        try:
+            # Extract parameters for itinerary
+            destination = classification.location_mentioned or classification.city or "Hồ Chí Minh"
+            num_days = classification.num_days or 1
+            
+            # Limit to valid range
+            num_days = max(1, min(7, num_days))
+            
+            # Create itinerary request
+            itinerary_request = ItineraryRequest(
+                destination=destination,
+                num_days=num_days,
+                preferences=classification.keywords if classification.keywords else None,
+                budget=classification.price_range,
+                max_budget=classification.budget_amount,
+                user_lat=user_lat,
+                user_lon=user_lon
+            )
+            
+            # Generate itinerary
+            itinerary_response = self.itinerary_service.generate_itinerary(itinerary_request)
+            
+            # Convert itinerary to dict for response
+            itinerary_dict = itinerary_response.model_dump()
+            
+            # Build answer text
+            answer = self._format_itinerary_answer(itinerary_response, destination, num_days)
+            
+            # Extract places from itinerary for places list
+            places_list = []
+            for day in itinerary_response.itinerary:
+                for activity in day.activities:
+                    place_info = PlaceInfo(
+                        place_id=activity.place_id or "unknown",
+                        name=activity.place_name,
+                        address=activity.address,
+                        latitude=activity.latitude or 0,
+                        longitude=activity.longitude or 0,
+                        category=activity.category,
+                        rating=activity.rating
+                    )
+                    places_list.append(place_info)
+            
+            return ChatResponse(
+                answer=answer,
+                places=places_list,
+                query_type="itinerary",
+                total_places=len(places_list),
+                user_location={'lat': user_lat, 'lon': user_lon} if has_user_location else None,
+                itinerary=itinerary_dict
+            )
+            
+        except Exception as e:
+            print(f"❌ Error generating itinerary: {e}")
+            import traceback
+            traceback.print_exc()
+            return ChatResponse(
+                answer=f"Xin lỗi, tôi không thể tạo lịch trình lúc này. Lỗi: {str(e)}",
+                places=[],
+                query_type="itinerary",
+                total_places=0,
+                user_location={'lat': user_lat, 'lon': user_lon} if has_user_location else None
+            )
+    
+    def _format_itinerary_answer(self, itinerary, destination: str, num_days: int) -> str:
+        """Format itinerary into a friendly text response"""
+        lines = [
+            f"🗓️ **Lịch trình {num_days} ngày tại {destination}**\n",
+            f"📋 {itinerary.summary}\n"
+        ]
+        
+        for day in itinerary.itinerary:
+            lines.append(f"\n**📅 Ngày {day.day}: {day.theme}**")
+            for activity in day.activities:
+                emoji = self._get_activity_emoji(activity.activity_type)
+                lines.append(f"  {emoji} {activity.time} - **{activity.place_name}**")
+                if activity.address:
+                    lines.append(f"     📍 {activity.address}")
+        
+        if itinerary.tips:
+            lines.append("\n💡 **Lời khuyên:**")
+            for tip in itinerary.tips[:3]:
+                lines.append(f"  • {tip}")
+        
+        if itinerary.estimated_budget:
+            lines.append(f"\n💰 **Chi phí ước tính:** {itinerary.estimated_budget}")
+        
+        return "\n".join(lines)
+    
+    @staticmethod
+    def _get_activity_emoji(activity_type: str) -> str:
+        """Get emoji for activity type"""
+        emoji_map = {
+            'breakfast': '🍳',
+            'lunch': '🍜',
+            'dinner': '🍽️',
+            'cafe': '☕',
+            'coffee': '☕',
+            'visit': '🏛️',
+            'attractions': '🎭',
+            'shopping': '🛍️',
+            'rest': '😴'
+        }
+        return emoji_map.get(activity_type, '📍')
+
