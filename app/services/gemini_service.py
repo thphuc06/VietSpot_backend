@@ -66,10 +66,48 @@ class GeminiService:
         return text.strip()
     
     def _clean_json_string(self, json_str: str) -> str:
-        """Clean JSON string - just strip whitespace, json.loads() handles escapes"""
+        """Clean JSON string to handle common formatting issues from LLM responses"""
         if not json_str:
             return json_str
-        return json_str.strip()
+        
+        json_str = json_str.strip()
+        
+        # Fix unescaped control characters inside JSON string values
+        # This handles newlines, tabs that aren't properly escaped inside quotes
+        result = []
+        in_string = False
+        escape_next = False
+        
+        for char in json_str:
+            if escape_next:
+                result.append(char)
+                escape_next = False
+                continue
+            
+            if char == '\\':
+                result.append(char)
+                escape_next = True
+                continue
+            
+            if char == '"':
+                in_string = not in_string
+                result.append(char)
+                continue
+            
+            if in_string:
+                # Escape control characters inside strings
+                if char == '\n':
+                    result.append('\\n')
+                elif char == '\r':
+                    result.append('\\r')
+                elif char == '\t':
+                    result.append('\\t')
+                else:
+                    result.append(char)
+            else:
+                result.append(char)
+        
+        return ''.join(result)
         
     def classify_query(self, user_prompt: str) -> QueryClassification:
         """
@@ -109,6 +147,19 @@ QUY TẮC QUAN TRỌNG CHO keyword_variants (SINH BIẾN THỂ ĐỂ SEARCH):
   + Tên địa danh: "Hồ Chí Minh" -> ["Hồ Chí Minh", "Ho Chi Minh", "HCM", "Sài Gòn", "Saigon"]
 - Ví dụ: "quán cà phê yên tĩnh ở HCM" -> keyword_variants: ["cà phê", "ca phe", "cafe", "coffee", "Hồ Chí Minh", "Ho Chi Minh", "HCM", "Sài Gòn"]
 - Ví dụ: "trà sữa Quận 1" -> keyword_variants: ["trà sữa", "tra sua", "milk tea", "boba", "Quận 1", "Quan 1", "District 1"]
+
+QUY TẮC SUY LUẬN HOẠT ĐỘNG → ĐỊA ĐIỂM (RẤT QUAN TRỌNG):
+- Khi người dùng nói về HOẠT ĐỘNG, hãy suy luận ra LOẠI ĐỊA ĐIỂM phù hợp:
+  + "đi tắm", "tắm biển", "bơi" ở vùng biển → bãi biển, bãi tắm, beach
+  + "đi tắm", "bơi" ở thành phố → hồ bơi, swimming pool
+  + "ăn sáng", "ăn trưa", "ăn tối" → nhà hàng, quán ăn, restaurant
+  + "uống cà phê", "ngồi cafe" → quán cà phê, cafe
+  + "xem phim" → rạp chiếu phim, cinema
+  + "mua sắm", "shopping" → trung tâm thương mại, chợ, mall
+  + "tham quan", "check-in" → điểm du lịch, địa điểm nổi tiếng
+  + "leo núi", "trekking" → núi, đồi, hiking trail
+- Ví dụ: "tôi muốn đi tắm ở Vũng Tàu" -> keywords: ["bãi biển", "bãi tắm", "Vũng Tàu"], keyword_variants: ["bãi biển", "bai bien", "beach", "bãi tắm", "bai tam", "Vũng Tàu", "Vung Tau"], category: "beach"
+- Ví dụ: "muốn bơi ở Sài Gòn" -> keywords: ["hồ bơi"], keyword_variants: ["hồ bơi", "ho boi", "swimming pool", "bể bơi"], category: "swimming_pool"
 
 QUY TẮC QUAN TRỌNG CHO RATING:
 - Nếu người dùng yêu cầu rating CỤ THỂ (ví dụ: "rating 4.5", "đánh giá 4.5 sao"):
@@ -385,7 +436,18 @@ Chỉ trả về JSON, không thêm giải thích.
             
             json_text = self._clean_json_string(json_text.strip())
             
-            result_data = json.loads(json_text)
+            try:
+                result_data = json.loads(json_text)
+            except json.JSONDecodeError as je:
+                # Log more details for debugging
+                print(f"⚠️ JSON parse error at position {je.pos}: {je.msg}")
+                print(f"📝 Problematic JSON (around error): ...{json_text[max(0, je.pos-50):je.pos+50]}...")
+                
+                # Try a more aggressive cleanup - remove any control characters
+                import re as regex
+                cleaned_json = regex.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', json_text)
+                result_data = json.loads(cleaned_json)
+            
             selected_indices = result_data.get('selected_indices', [])
             answer = result_data.get('answer', '')
             

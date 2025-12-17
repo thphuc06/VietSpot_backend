@@ -25,6 +25,7 @@ class PlaceSupabaseService:
         """
         Search places by address for location terms, and by name for place names.
         Uses OR logic: match ANY keyword variant
+        Also searches in category field for activity-based queries (e.g., "đi tắm" -> "Biển & Bãi Biển")
         """
         try:
             query = self.client.table(self.places_table).select("*")
@@ -34,10 +35,25 @@ class PlaceSupabaseService:
                 'hồ chí minh', 'ho chi minh', 'hcm', 'sài gòn', 'saigon',
                 'hà nội', 'ha noi', 'hanoi',
                 'đà nẵng', 'da nang', 'danang',
+                'vũng tàu', 'vung tau', 'nha trang', 'phú quốc', 'phu quoc',
+                'đà lạt', 'da lat', 'hội an', 'hoi an', 'huế', 'hue',
                 'quận', 'quan', 'district', 'phường', 'phuong', 'ward',
                 'bình thạnh', 'binh thanh', 'thủ đức', 'thu duc',
                 'tân bình', 'tan binh', 'gò vấp', 'go vap',
             ]
+            
+            # Category keywords mapping for activity-based searches
+            category_keywords = {
+                'bãi biển': 'Biển & Bãi Biển', 'bai bien': 'Biển & Bãi Biển',
+                'beach': 'Biển & Bãi Biển', 'bãi tắm': 'Biển & Bãi Biển', 'bai tam': 'Biển & Bãi Biển',
+                'biển': 'Biển & Bãi Biển', 'bien': 'Biển & Bãi Biển',
+                'bảo tàng': 'Bảo Tàng & Triển Lãm', 'bao tang': 'Bảo Tàng & Triển Lãm',
+                'museum': 'Bảo Tàng & Triển Lãm', 'triển lãm': 'Bảo Tàng & Triển Lãm',
+                'cà phê': 'Quán Cà Phê', 'ca phe': 'Quán Cà Phê', 'cafe': 'Quán Cà Phê', 'coffee': 'Quán Cà Phê',
+                'nhà hàng': 'Nhà Hàng', 'nha hang': 'Nhà Hàng', 'restaurant': 'Nhà Hàng',
+                'công viên': 'Công Viên', 'cong vien': 'Công Viên', 'park': 'Công Viên',
+                'di tích': 'Di Tích Lịch Sử', 'di tich': 'Di Tích Lịch Sử', 'lịch sử': 'Di Tích Lịch Sử',
+            }
             
             # Combine all search terms
             all_search_terms = []
@@ -51,23 +67,48 @@ class PlaceSupabaseService:
             # Remove duplicates
             all_search_terms = list(set([term for term in all_search_terms if term and term.strip()]))
             
-            if all_search_terms:
-                or_filters = []
-                for term in all_search_terms:
-                    term_lower = term.lower()
-                    # Check if term is a city/district (search address only)
-                    is_location_term = any(loc in term_lower for loc in city_district_keywords)
-                    
-                    if is_location_term:
-                        # Location terms: search in address only
-                        or_filters.append(f"address.ilike.%{term}%")
-                    else:
-                        # Place names (Chợ Bến Thành, Highlands, etc.): search in BOTH name and address
-                        or_filters.append(f"name.ilike.%{term}%")
-                        or_filters.append(f"address.ilike.%{term}%")
+            # Detect category from search terms
+            detected_categories = set()
+            for term in all_search_terms:
+                term_lower = term.lower()
+                if term_lower in category_keywords:
+                    detected_categories.add(category_keywords[term_lower])
+            
+            # Separate location terms and other terms
+            location_filters = []
+            category_filters = []
+            name_filters = []
+            
+            for term in all_search_terms:
+                term_lower = term.lower()
+                is_location_term = any(loc in term_lower for loc in city_district_keywords)
+                is_category_term = term_lower in category_keywords
                 
-                filter_string = ",".join(or_filters)
-                print(f"DEBUG: Searching with {len(all_search_terms)} terms: {all_search_terms[:5]}...")
+                if is_location_term:
+                    location_filters.append(f"address.ilike.%{term}%")
+                elif is_category_term:
+                    db_category = category_keywords[term_lower]
+                    # Use simpler category match (avoid special characters issue)
+                    category_filters.append(f"category.ilike.%{db_category}%")
+                else:
+                    name_filters.append(f"name.ilike.%{term}%")
+                    name_filters.append(f"address.ilike.%{term}%")
+            
+            print(f"DEBUG: location_filters: {location_filters}")
+            print(f"DEBUG: category_filters: {category_filters}")
+            print(f"DEBUG: name_filters: {name_filters[:4]}...")
+            
+            # Strategy: Query by location in DB, then filter by category in Python
+            # This avoids issues with special characters in category names
+            if location_filters:
+                location_or = ",".join(location_filters)
+                print(f"DEBUG: Filtering by location: {location_or}")
+                query = query.or_(location_or)
+            
+            if name_filters and not location_filters:
+                # Only use name filters if no location specified
+                filter_string = ",".join(name_filters)
+                print(f"DEBUG: Using name filters: {len(name_filters)} filters")
                 query = query.or_(filter_string)
             
             if min_rating is not None:
@@ -93,16 +134,37 @@ class PlaceSupabaseService:
                 # Calculate match score
                 name = (place.get('name') or '').lower()
                 address = (place.get('address') or '').lower()
+                place_category = (place.get('category') or '').lower()
                 match_count = 0
+                category_matched = False
+                
                 for term in all_search_terms:
                     term_lower = term.lower()
                     if term_lower in name:
                         match_count += 2  # Name match worth more
                     if term_lower in address:
                         match_count += 1
+                
+                # Check category match (filter in Python instead of SQL)
+                for detected_cat in detected_categories:
+                    if detected_cat.lower() in place_category:
+                        match_count += 10  # Category match is very important
+                        category_matched = True
+                        
                 place['keyword_match_score'] = match_count
+                place['category_matched'] = category_matched
                 
                 places.append(place)
+            
+            # If we have category filters, prioritize places that match category
+            if detected_categories:
+                # Filter to only include places that match category
+                category_matched_places = [p for p in places if p.get('category_matched')]
+                if category_matched_places:
+                    print(f"DEBUG: Found {len(category_matched_places)} places matching category")
+                    places = category_matched_places
+                else:
+                    print(f"DEBUG: No places matched category, returning all {len(places)} places")
             
             # Sort by match score
             places.sort(key=lambda x: x.get('keyword_match_score', 0), reverse=True)
