@@ -316,7 +316,8 @@ Danh sách địa điểm ứng viên ({len(places_info)} địa điểm):
 BƯỚC 1: CHỌN ĐỊA ĐIỂM
 - Chọn ĐÚNG {max_places} địa điểm (hoặc tất cả nếu ít hơn {max_places} địa điểm phù hợp)
 - NẾU người dùng yêu cầu số lượng cụ thể (ví dụ: "12 quán"), PHẢI chọn đủ số đó
-- Ưu tiên: đánh giá cao, thông tin rõ ràng, gần người dùng, phù hợp ngữ cảnh
+- **XEM XÉT KỸ TRƯỜNG "address" CỦA MỖI ĐỊA ĐIỂM**: Nếu người dùng hỏi về khu vực/quận/thành phố cụ thể, ƯU TIÊN chọn các địa điểm có address CHỨA tên khu vực đó
+- Ưu tiên: địa chỉ phù hợp với yêu cầu, đánh giá cao, thông tin rõ ràng, gần người dùng, phù hợp ngữ cảnh
 
 BƯỚC 2: TẠO CÂU TRẢ LỜI
 - {language_instruction}
