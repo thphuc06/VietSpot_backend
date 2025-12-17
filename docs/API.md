@@ -2,6 +2,7 @@
 
 > **Base URL:** `http://localhost:8000`  
 > **API Prefix:** `/api`
+> **Backend Deploy URL:** `https://vietspotbackend-production.up.railway.app/docs`
 
 ---
 
