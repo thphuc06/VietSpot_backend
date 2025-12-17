@@ -12,6 +12,8 @@
 - [Comments](#comments)
 - [Users](#users)
 - [Images](#images)
+- [Chat (AI Chatbot)](#chat-ai-chatbot)
+- [Itinerary](#itinerary)
 - [Authentication](#authentication)
 - [Database Triggers](#database-triggers)
 - [RPC Functions](#rpc-functions)
@@ -144,7 +146,47 @@ Lấy danh sách tất cả categories.
 
 ---
 
-### 4. GET /api/places/{place_id}
+### 4. GET /api/places/search
+
+Tìm kiếm địa điểm theo tên sử dụng fuzzy search (similarity >= 50%).
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `keyword` | string | ✅ Yes | - | Từ khóa tìm kiếm (tên địa điểm) |
+| `lat` | float | No | null | Latitude của user (optional, để sắp xếp theo khoảng cách) |
+| `lon` | float | No | null | Longitude của user (optional) |
+| `limit` | int | No | 20 | Số kết quả tối đa (1-100) |
+
+**Example:**
+```
+GET /api/places/search?keyword=Dinh%20Độc%20Lập&lat=10.7769&lon=106.7009&limit=10
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "name": "Dinh Độc Lập",
+    "address": "135 Nam Kỳ Khởi Nghĩa, Quận 1, TP.HCM",
+    "category": "Di Tích Lịch Sử",
+    "rating": 4.6,
+    "rating_count": 1250,
+    "similarity": 0.95,
+    "distance_km": 0.5,
+    "distance_m": 500,
+    "images": [
+      {"id": "uuid", "url": "https://..."}
+    ]
+  }
+]
+```
+
+---
+
+### 5. GET /api/places/{place_id}
 
 Lấy chi tiết một địa điểm.
 
@@ -191,9 +233,11 @@ Lấy chi tiết một địa điểm.
 
 ---
 
-### 5. POST /api/places
+### 6. POST /api/places
 
 Tạo địa điểm mới.
+
+**Authentication:** Requires JWT token (Bearer)
 
 **Request Body:**
 ```json
@@ -236,9 +280,11 @@ Tạo địa điểm mới.
 
 ---
 
-### 6. PUT /api/places/{place_id}
+### 7. PUT /api/places/{place_id}
 
 Cập nhật địa điểm.
+
+**Authentication:** Requires JWT token (Bearer)
 
 **Request Body:** (tất cả fields đều optional)
 ```json
@@ -260,9 +306,11 @@ Cập nhật địa điểm.
 
 ---
 
-### 7. DELETE /api/places/{place_id}
+### 8. DELETE /api/places/{place_id}
 
 Xóa địa điểm.
+
+**Authentication:** Requires JWT token (Bearer)
 
 > ⚠️ Trigger `trigger_delete_place_cascade` tự động xóa images và comments liên quan.
 
@@ -276,7 +324,7 @@ Xóa địa điểm.
 
 ---
 
-### 8. GET /api/places/{place_id}/images
+### 9. GET /api/places/{place_id}/images
 
 Lấy danh sách ảnh của địa điểm.
 
@@ -296,7 +344,7 @@ Lấy danh sách ảnh của địa điểm.
 
 ---
 
-### 9. GET /api/places/{place_id}/comments
+### 10. GET /api/places/{place_id}/comments
 
 Lấy danh sách comments của địa điểm (sử dụng RPC `get_comments_by_place`).
 
@@ -335,13 +383,14 @@ Lấy danh sách comments của địa điểm (sử dụng RPC `get_comments_by
 
 Tạo comment mới (sử dụng RPC `create_user_content`).
 
-> ✅ Tự động tạo guest user nếu `user_id` không tồn tại trong database.
+**Authentication:** Requires JWT token (Bearer)
+
+> ✅ User ID được lấy từ JWT token. Tự động tạo guest user nếu `user_id` không tồn tại trong database.
 
 **Request Body:**
 ```json
 {
   "place_id": "uuid",
-  "user_id": "uuid",
   "author_name": "Nguyễn Văn A",
   "rating": 5,
   "text": "Địa điểm rất đẹp!",
@@ -354,7 +403,6 @@ Tạo comment mới (sử dụng RPC `create_user_content`).
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `place_id` | uuid | ✅ Yes | - | ID của địa điểm |
-| `user_id` | uuid | No | auto-generate | ID của user |
 | `author_name` | string | No | "Khách tham quan" | Tên hiển thị |
 | `rating` | int | No | 5 | Điểm đánh giá (0-5) |
 | `text` | string | No | null | Nội dung comment |
@@ -386,11 +434,7 @@ Tạo comment mới (sử dụng RPC `create_user_content`).
 
 Cập nhật comment (chỉ owner).
 
-**Headers:**
-
-| Header | Type | Required | Description |
-|--------|------|----------|-------------|
-| `X-User-ID` | uuid | ✅ Yes | UUID của owner |
+**Authentication:** Requires JWT token (Bearer)
 
 **Request Body:**
 ```json
@@ -428,13 +472,9 @@ Cập nhật comment (chỉ owner).
 
 Xóa comment (chỉ owner).
 
+**Authentication:** Requires JWT token (Bearer)
+
 > ⚠️ Trigger `trigger_update_place_rating` tự động cập nhật rating của place.
-
-**Headers:**
-
-| Header | Type | Required | Description |
-|--------|------|----------|-------------|
-| `X-User-ID` | uuid | ✅ Yes | UUID của owner |
 
 **Response:**
 ```json
@@ -454,11 +494,7 @@ Xóa comment (chỉ owner).
 
 Thêm ảnh vào comment (chỉ owner).
 
-**Headers:**
-
-| Header | Type | Required | Description |
-|--------|------|----------|-------------|
-| `X-User-ID` | uuid | ✅ Yes | UUID của owner |
+**Authentication:** Requires JWT token (Bearer)
 
 **Request Body:**
 ```json
@@ -484,11 +520,7 @@ Thêm ảnh vào comment (chỉ owner).
 
 Xóa ảnh khỏi comment (chỉ owner).
 
-**Headers:**
-
-| Header | Type | Required | Description |
-|--------|------|----------|-------------|
-| `X-User-ID` | uuid | ✅ Yes | UUID của owner |
+**Authentication:** Requires JWT token (Bearer)
 
 **Response:**
 ```json
@@ -566,16 +598,37 @@ Lấy danh sách places mà user đã comment.
 
 ## Images
 
-### POST /api/upload
+### 1. GET /api/comments/{comment_id}/images
+
+Lấy danh sách hình ảnh của một comment.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `comment_id` | uuid | ID của comment |
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "url": "https://storage.supabase.co/...",
+    "place_id": "uuid",
+    "comment_id": "uuid",
+    "is_scraped": false,
+    "uploaded_at": "2024-01-01T00:00:00"
+  }
+]
+```
+
+---
+
+### 2. POST /api/upload
 
 Upload ảnh lên Supabase Storage.
 
-**Headers:**
-
-| Header | Type | Required | Description |
-|--------|------|----------|-------------|
-| `X-User-ID` | uuid | ✅ Yes | UUID của user |
-| `Content-Type` | string | ✅ Yes | multipart/form-data |
+**Authentication:** Requires JWT token (Bearer)
 
 **Request:** `multipart/form-data`
 
@@ -611,22 +664,213 @@ Upload ảnh lên Supabase Storage.
 
 ---
 
+## Chat (AI Chatbot)
+
+### 1. POST /api/chat
+
+Main chat endpoint cho chatbot AI sử dụng Gemini.
+
+**Authentication:** Optional JWT token (Bearer) - Cho phép personalized recommendations nếu có token.
+
+**Request Body:**
+```json
+{
+  "message": "Tìm quán cafe gần đây",
+  "session_id": "optional-session-id",
+  "user_lat": 10.7769,
+  "user_lon": 106.7009
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `message` | string | ✅ Yes | Câu hỏi/yêu cầu của user |
+| `session_id` | string | No | Session identifier (optional) |
+| `user_lat` | float | No | Latitude của user (optional) |
+| `user_lon` | float | No | Longitude của user (optional) |
+
+**Response:**
+```json
+{
+  "answer": "Dưới đây là các quán cafe gần bạn...",
+  "places": [
+    {
+      "id": "uuid",
+      "name": "Cafe ABC",
+      "address": "...",
+      "rating": 4.5,
+      "distance_km": 0.5
+    }
+  ],
+  "query_type": "nearby_search",
+  "total_places": 5,
+  "user_location": {
+    "lat": 10.7769,
+    "lon": 106.7009
+  }
+}
+```
+
+---
+
+### 2. GET /api/chat/config
+
+Lấy cấu hình chat hiện tại (non-sensitive data).
+
+**Response:**
+```json
+{
+  "default_nearby_radius_km": 5.0,
+  "default_nearby_radius_km_short": 2.0,
+  "top_n_semantic_results": 30,
+  "top_k_final_results": 10,
+  "weights": {
+    "semantic": 0.3,
+    "distance": 0.3,
+    "rating": 0.2,
+    "popularity": 0.2
+  }
+}
+```
+
+---
+
+### 3. POST /api/chat/itinerary/save
+
+Lưu itinerary cho một session.
+
+**Authentication:** Optional JWT token (Bearer)
+
+**Request Body:**
+```json
+{
+  "session_id": "session-123",
+  "title": "Hành trình 3 ngày tại Hà Nội",
+  "content": "Chi tiết lịch trình...",
+  "places": ["place-id-1", "place-id-2"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Itinerary saved successfully",
+  "itinerary_id": 1
+}
+```
+
+---
+
+### 4. GET /api/chat/itinerary/list/{session_id}
+
+Lấy tất cả itineraries cho một session.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `session_id` | string | ID của session |
+
+**Response:**
+```json
+{
+  "success": true,
+  "itineraries": [
+    {
+      "id": 1,
+      "title": "Hành trình 3 ngày tại Hà Nội",
+      "content": "Chi tiết lịch trình...",
+      "places": ["place-id-1", "place-id-2"],
+      "created_at": null
+    }
+  ]
+}
+```
+
+---
+
+## Itinerary
+
+### POST /api/itinerary/generate
+
+Tạo lịch trình du lịch tự động dựa trên destination và preferences.
+
+**Request Body:**
+```json
+{
+  "destination": "Hồ Chí Minh",
+  "num_days": 3,
+  "preferences": ["ẩm thực", "văn hóa"],
+  "budget": "medium",
+  "start_time": "08:00",
+  "end_time": "22:00"
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `destination` | string | ✅ Yes | - | Địa điểm du lịch |
+| `num_days` | int | ✅ Yes | - | Số ngày du lịch |
+| `preferences` | string[] | No | [] | Sở thích (ẩm thực, văn hóa, ...) |
+| `budget` | string | No | "medium" | Mức ngân sách (low/medium/high) |
+| `start_time` | string | No | "08:00" | Giờ bắt đầu mỗi ngày |
+| `end_time` | string | No | "22:00" | Giờ kết thúc mỗi ngày |
+
+**Response:**
+```json
+{
+  "destination": "Hồ Chí Minh",
+  "num_days": 3,
+  "itinerary": {
+    "day_1": [
+      {
+        "time": "08:00",
+        "place": "Chợ Bến Thành",
+        "description": "Khám phá chợ truyền thống",
+        "duration": 120
+      }
+    ],
+    "day_2": [...],
+    "day_3": [...]
+  }
+}
+```
+
+---
+
 ## Authentication
 
-Hiện tại API sử dụng header `X-User-ID` để xác thực user.
+API sử dụng JWT (JSON Web Token) để xác thực user.
 
 ### Headers
 
 | Header | Type | Required | Description |
 |--------|------|----------|-------------|
-| `X-User-ID` | uuid | Yes* | UUID của user (bắt buộc cho các endpoint cần xác thực) |
+| `Authorization` | string | Yes* | Bearer token: `Bearer <JWT_TOKEN>` (bắt buộc cho các endpoint cần xác thực) |
 
-**Endpoints yêu cầu `X-User-ID`:**
-- `PUT /api/comments/{comment_id}`
-- `DELETE /api/comments/{comment_id}`
-- `POST /api/comments/{comment_id}/images`
-- `DELETE /api/comments/{comment_id}/images/{image_id}`
-- `POST /api/upload`
+### JWT Token Format
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**Endpoints yêu cầu JWT Authentication:**
+- `POST /api/places` - Tạo địa điểm mới
+- `PUT /api/places/{id}` - Cập nhật địa điểm
+- `DELETE /api/places/{id}` - Xóa địa điểm
+- `POST /api/comments` - Tạo comment mới
+- `PUT /api/comments/{id}` - Cập nhật comment
+- `DELETE /api/comments/{id}` - Xóa comment
+- `POST /api/comments/{id}/images` - Thêm ảnh vào comment
+- `DELETE /api/comments/{id}/images/{img_id}` - Xóa ảnh khỏi comment
+- `POST /api/upload` - Upload ảnh
+
+**Endpoints hỗ trợ Optional JWT (cho personalization):**
+- `POST /api/chat` - Chat với AI chatbot
+- `POST /api/chat/itinerary/save` - Lưu itinerary
+
+> 📝 Để biết thêm chi tiết về JWT authentication, xem [JWT_AUTHENTICATION_GUIDE.md](JWT_AUTHENTICATION_GUIDE.md)
 
 ---
 
@@ -719,36 +963,78 @@ Tạo comment + auto tạo guest user + insert images.
 
 | # | Method | Endpoint | Auth | Description |
 |---|--------|----------|------|-------------|
+| **Health & Info** |
 | 1 | GET | `/health` | No | Health check |
 | 2 | GET | `/` | No | API info |
-| 3 | GET | `/api/places` | No | Lấy danh sách places |
-| 4 | GET | `/api/places/nearby` | No | Lấy places gần đây |
-| 5 | GET | `/api/places/categories` | No | Lấy danh sách categories |
-| 6 | GET | `/api/places/{id}` | No | Lấy chi tiết place |
-| 7 | POST | `/api/places` | No | Tạo place mới |
-| 8 | PUT | `/api/places/{id}` | No | Cập nhật place |
-| 9 | DELETE | `/api/places/{id}` | No | Xóa place |
-| 10 | GET | `/api/places/{id}/images` | No | Lấy ảnh của place |
-| 11 | GET | `/api/places/{id}/comments` | No | Lấy comments của place |
-| 12 | POST | `/api/comments` | No | Tạo comment |
-| 13 | PUT | `/api/comments/{id}` | **X-User-ID** | Cập nhật comment |
-| 14 | DELETE | `/api/comments/{id}` | **X-User-ID** | Xóa comment |
-| 15 | POST | `/api/comments/{id}/images` | **X-User-ID** | Thêm ảnh vào comment |
-| 16 | DELETE | `/api/comments/{id}/images/{img_id}` | **X-User-ID** | Xóa ảnh khỏi comment |
-| 17 | GET | `/api/users/{id}/comments` | No | Lấy comments của user |
-| 18 | GET | `/api/users/{id}/commented-places` | No | Lấy places user đã comment |
-| 19 | POST | `/api/upload` | **X-User-ID** | Upload ảnh |
+| **Places** |
+| 3 | GET | `/api/places` | No | Lấy danh sách places với filters |
+| 4 | GET | `/api/places/search` | No | Tìm kiếm địa điểm theo tên (fuzzy search) |
+| 5 | GET | `/api/places/nearby` | No | Lấy places gần vị trí user |
+| 6 | GET | `/api/places/categories` | No | Lấy danh sách categories |
+| 7 | GET | `/api/places/{id}` | No | Lấy chi tiết place |
+| 8 | POST | `/api/places` | **JWT** | Tạo place mới |
+| 9 | PUT | `/api/places/{id}` | **JWT** | Cập nhật place |
+| 10 | DELETE | `/api/places/{id}` | **JWT** | Xóa place |
+| 11 | GET | `/api/places/{id}/images` | No | Lấy ảnh của place |
+| 12 | GET | `/api/places/{id}/comments` | No | Lấy comments của place |
+| **Comments** |
+| 13 | POST | `/api/comments` | **JWT** | Tạo comment mới |
+| 14 | PUT | `/api/comments/{id}` | **JWT** | Cập nhật comment (owner only) |
+| 15 | DELETE | `/api/comments/{id}` | **JWT** | Xóa comment (owner only) |
+| 16 | POST | `/api/comments/{id}/images` | **JWT** | Thêm ảnh vào comment |
+| 17 | DELETE | `/api/comments/{id}/images/{img_id}` | **JWT** | Xóa ảnh khỏi comment |
+| **Images** |
+| 18 | GET | `/api/comments/{id}/images` | No | Lấy ảnh của comment |
+| 19 | POST | `/api/upload` | **JWT** | Upload ảnh lên storage |
+| **Users** |
+| 20 | GET | `/api/users/{id}/comments` | No | Lấy tất cả comments của user |
+| 21 | GET | `/api/users/{id}/commented-places` | No | Lấy places user đã comment |
+| **Chat (AI Chatbot)** |
+| 22 | POST | `/api/chat` | Optional JWT | Chat với AI chatbot |
+| 23 | GET | `/api/chat/config` | No | Lấy cấu hình chat |
+| 24 | POST | `/api/chat/itinerary/save` | Optional JWT | Lưu itinerary |
+| 25 | GET | `/api/chat/itinerary/list/{session_id}` | No | Lấy danh sách itineraries |
+| **Itinerary** |
+| 26 | POST | `/api/itinerary/generate` | No | Tạo lịch trình du lịch tự động |
 
 ---
 
 ## Notes
 
-1. **Images Workflow**: Upload ảnh trước qua `/api/upload`, sau đó dùng URLs trả về khi tạo/update comment.
+1. **Authentication**: API sử dụng JWT Bearer token cho authentication. Xem [JWT_AUTHENTICATION_GUIDE.md](JWT_AUTHENTICATION_GUIDE.md) để biết thêm chi tiết.
 
-2. **Distance Calculation**: Khi truyền `lat`, `lon`, API sẽ tính `distance_km` cho mỗi place sử dụng PostGIS.
+2. **Images Workflow**: Upload ảnh trước qua `/api/upload`, sau đó dùng URLs trả về khi tạo/update comment.
 
-3. **Guest User**: Khi tạo comment mà `user_id` không tồn tại, RPC sẽ tự động tạo guest user.
+3. **Distance Calculation**: Khi truyền `lat`, `lon`, API sẽ tính `distance_km` và `distance_m` cho mỗi place sử dụng PostGIS.
 
-4. **Coordinates Format**: Database lưu coordinates dạng GeoJSON `[lon, lat]` array.
+4. **Fuzzy Search**: Endpoint `/api/places/search` sử dụng PostgreSQL similarity để tìm kiếm địa điểm theo tên với độ tương đồng >= 50%.
 
-5. **Rating Auto-Update**: Khi thêm/sửa/xóa comment, trigger sẽ tự động cập nhật rating trung bình của place.
+5. **Guest User**: Khi tạo comment mà `user_id` không tồn tại, RPC sẽ tự động tạo guest user.
+
+6. **Coordinates Format**: Database lưu coordinates dạng GeoJSON `[lon, lat]` array.
+
+7. **Rating Auto-Update**: Khi thêm/sửa/xóa comment, trigger `trigger_update_place_rating` sẽ tự động cập nhật rating trung bình của place.
+
+8. **AI Chatbot**: Endpoint `/api/chat` sử dụng Gemini AI để xử lý natural language queries và đề xuất địa điểm dựa trên semantic search.
+
+9. **Itinerary Generation**: Endpoint `/api/itinerary/generate` tự động tạo lịch trình du lịch dựa trên preferences và constraints của user.
+
+---
+
+## Changelog
+
+### Version 1.1.0 (Latest)
+- ✅ Thêm JWT Authentication cho tất cả endpoints cần xác thực
+- ✅ Thêm endpoint `/api/places/search` - Fuzzy search theo tên địa điểm
+- ✅ Thêm endpoint `/api/comments/{comment_id}/images` - Lấy ảnh của comment
+- ✅ Thêm AI Chat endpoints:
+  - `POST /api/chat` - Main chat endpoint
+  - `GET /api/chat/config` - Lấy cấu hình
+  - `POST /api/chat/itinerary/save` - Lưu itinerary
+  - `GET /api/chat/itinerary/list/{session_id}` - Danh sách itineraries
+- ✅ Thêm Itinerary endpoint:
+  - `POST /api/itinerary/generate` - Tạo lịch trình tự động
+- ✅ Cập nhật documentation với format chuẩn và chi tiết hơn
+
+### Version 1.0.0
+- Initial release với basic CRUD operations cho Places, Comments, Users, Images
