@@ -78,6 +78,46 @@ async def get_places(
         raise HTTPException(status_code=500, detail=f"Lỗi khi lấy danh sách địa điểm: {str(e)}")
 
 
+@router.get("/search", response_model=List[dict])
+async def search_places(
+    keyword: str = Query(..., min_length=1, description="Từ khóa tìm kiếm (tên địa điểm)"),
+    lat: Optional[float] = Query(None, description="Latitude của user (optional)"),
+    lon: Optional[float] = Query(None, description="Longitude của user (optional)"),
+    limit: int = Query(20, ge=1, le=100, description="Số kết quả tối đa"),
+    db: Client = Depends(get_db)
+):
+    """
+    Tìm kiếm địa điểm theo tên sử dụng fuzzy search (similarity >= 50%).
+    Kết quả được sắp xếp theo độ giống nhau và khoảng cách (nếu có location).
+    """
+    try:
+        response = db.rpc("search_places", {
+            "p_keyword": keyword,
+            "p_lat": lat,
+            "p_lon": lon,
+            "p_limit": limit
+        }).execute()
+
+        places = response.data if response.data else []
+
+        # Format output
+        for place in places:
+            # Convert distance_km to distance_m for consistency
+            if place.get("distance_km") is not None:
+                place["distance_m"] = int(float(place["distance_km"]) * 1000)
+            else:
+                place["distance_m"] = None
+
+            # Ensure images is always a list
+            if "images" not in place or place["images"] is None:
+                place["images"] = []
+
+        return places
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi tìm kiếm địa điểm: {str(e)}")
+
+
 @router.get("/nearby", response_model=List[dict])
 async def get_nearby_places(
     lat: float = Query(..., description="Latitude của user"),
@@ -91,7 +131,7 @@ async def get_nearby_places(
     """Lấy các địa điểm gần vị trí user, sort theo distance."""
     try:
         category_array = [c.strip() for c in categories.split(",") if c.strip()] if categories else None
-        
+
         response = db.rpc("get_places_advanced_v2", {
             "p_location": None,
             "p_lat": lat,
@@ -104,9 +144,9 @@ async def get_nearby_places(
             "p_sort_options": ["distance"],
             "p_limit": limit
         }).execute()
-        
+
         places = response.data if response.data else []
-        
+
         for place in places:
             if place.get("distance_km") is not None:
                 place["distance_m"] = int(float(place["distance_km"]) * 1000)
@@ -114,9 +154,9 @@ async def get_nearby_places(
                 place["distance_m"] = None
             if "images" not in place or place["images"] is None:
                 place["images"] = []
-        
+
         return places
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi: {str(e)}")
 

@@ -64,3 +64,17 @@ class PlaceListResponse(Place):
     """
     distance_km: Optional[float] = None  # Khoảng cách tính bằng km
     distance_m: Optional[float] = None   # Khoảng cách tính bằng meters (từ RPC)
+
+
+class PlaceSearchResponse(PlaceBase):
+    """
+    Schema cho kết quả tìm kiếm địa điểm (search_places function).
+    Bao gồm match_score và distance_km.
+    """
+    id: str
+    distance_km: Optional[float] = None  # Khoảng cách từ user (nếu có lat/lon)
+    distance_m: Optional[int] = None     # Khoảng cách tính bằng meters
+    match_score: Optional[float] = None  # Điểm số giống nhau (similarity score)
+    images: Optional[List[dict]] = []
+
+    model_config = ConfigDict(from_attributes=True)
