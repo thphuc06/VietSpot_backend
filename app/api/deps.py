@@ -8,8 +8,10 @@ from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import Client
 import jwt
-from jwt import PyJWKClient
+from jwt.algorithms import ECAlgorithm, RSAAlgorithm
 from jwt.exceptions import InvalidTokenError
+import requests
+import json
 
 from app.services.supabase_client import get_supabase_client
 from app.core.config import settings
@@ -25,13 +27,32 @@ security = HTTPBearer(
 # JWKS URL for fetching Supabase public keys
 JWKS_URL = f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
 
-# Create PyJWKClient to automatically fetch and cache public keys
-jwks_client = PyJWKClient(JWKS_URL)
+# Cache for JWKS keys (in production, use Redis or similar)
+_jwks_cache = None
+
+
+def get_jwks_keys():
+    """
+    Fetch JWKS keys from Supabase.
+    Uses simple in-memory caching.
+    """
+    global _jwks_cache
+    if _jwks_cache is None:
+        try:
+            response = requests.get(JWKS_URL, timeout=5)
+            response.raise_for_status()
+            _jwks_cache = response.json()
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to fetch JWKS keys from {JWKS_URL}: {str(e)}"
+            )
+    return _jwks_cache
 
 
 def verify_jwt_token(token: str) -> dict:
     """
-    Verify Supabase JWT token using RS256 and JWKS public keys.
+    Verify Supabase JWT token using ES256/RS256 and JWKS public keys.
     
     Args:
         token: JWT token string
@@ -43,34 +64,73 @@ def verify_jwt_token(token: str) -> dict:
         HTTPException 401 if token is invalid
     """
     try:
-        # Get the signing key from the JWKS endpoint
-        # This automatically fetches the public key based on the token's key ID (kid)
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        # Get the token header to find the Key ID (kid)
+        header = jwt.get_unverified_header(token)
+        kid = header.get('kid')
+        alg = header.get('alg')
         
-        # Decode and verify JWT token using RS256 algorithm
+        if not kid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token missing 'kid' in header",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Fetch JWKS keys
+        jwks = get_jwks_keys()
+        
+        # Find the matching public key
+        public_key = None
+        for key in jwks.get('keys', []):
+            if key.get('kid') == kid:
+                # Convert JWK to public key based on algorithm
+                if alg == 'ES256':
+                    public_key = ECAlgorithm.from_jwk(json.dumps(key))
+                elif alg == 'RS256':
+                    public_key = RSAAlgorithm.from_jwk(json.dumps(key))
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail=f"Unsupported algorithm: {alg}",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                break
+        
+        if not public_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Public key with kid '{kid}' not found in JWKS endpoint. "
+                       f"Token may be from a different Supabase project.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Decode and verify JWT token
         payload = jwt.decode(
             token,
-            signing_key.key,
-            algorithms=["RS256"],
+            public_key,
+            algorithms=[alg],  # Use the algorithm from token header
             audience="authenticated"
         )
         return payload
+        
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except InvalidTokenError as e:
+    except jwt.InvalidTokenError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid authentication token: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
+            detail=f"Token verification failed: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
