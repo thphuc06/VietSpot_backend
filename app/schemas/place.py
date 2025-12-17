@@ -1,8 +1,10 @@
 """Place Schemas - Match với database schema thực tế"""
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_serializer
 from typing import Optional, List, Any
 from datetime import datetime
+
+from app.core.datetime_utils import format_iso8601_vietnam
 
 
 class Coordinates(BaseModel):
@@ -53,7 +55,17 @@ class Place(PlaceBase):
     images: Optional[List[dict]] = []
     comments: Optional[List[dict]] = []
     comments_count: Optional[int] = 0
-    
+
+    @field_serializer('created_at')
+    def serialize_created_at(self, dt: Optional[datetime], _info) -> Optional[str]:
+        """
+        Serialize created_at to ISO 8601 string in Vietnam timezone.
+        Converts from UTC (storage) to UTC+7 (API response).
+        """
+        if dt is None:
+            return None
+        return format_iso8601_vietnam(dt)
+
     model_config = ConfigDict(from_attributes=True)
 
 

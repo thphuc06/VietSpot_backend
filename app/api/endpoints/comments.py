@@ -10,6 +10,7 @@ from datetime import datetime
 import uuid
 
 from app.api.deps import get_current_user_id, get_db
+from app.core.datetime_utils import get_utc_now
 from app.schemas.comment import (
     CommentResponse,
     CreateCommentRequest,
@@ -226,7 +227,7 @@ async def add_images_to_comment(
                 "place_id": place_id,
                 "url": url,
                 "is_scraped": False,
-                "uploaded_at": datetime.now().isoformat()
+                "uploaded_at": get_utc_now().isoformat()
             }
             result = db.table('images').insert(img_data).execute()
             if hasattr(result, 'data') and result.data:

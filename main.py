@@ -4,6 +4,7 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.api.router import api_router
+from app.core.datetime_utils import format_iso8601_vietnam
 
 # Create FastAPI application
 app = FastAPI(
@@ -41,7 +42,7 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": format_iso8601_vietnam(datetime.now()),
         "version": settings.APP_VERSION
     }
 

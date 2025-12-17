@@ -3,10 +3,12 @@ Comment Schemas
 Schemas cho comments/reviews
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from typing import Optional, List
+from datetime import datetime
 
 from app.schemas.image import ImageResponse
+from app.core.datetime_utils import format_iso8601_vietnam
 
 
 class CommentResponse(BaseModel):
@@ -17,8 +19,18 @@ class CommentResponse(BaseModel):
     author: Optional[str] = None
     rating: Optional[float] = None
     text: Optional[str] = None
-    date: Optional[str] = None
+    date: Optional[datetime] = None
     images: List[ImageResponse] = []
+
+    @field_serializer('date')
+    def serialize_date(self, dt: Optional[datetime], _info) -> Optional[str]:
+        """
+        Serialize datetime to ISO 8601 string in Vietnam timezone.
+        Converts from UTC (storage) to UTC+7 (API response).
+        """
+        if dt is None:
+            return None
+        return format_iso8601_vietnam(dt)
 
 
 class CreateCommentRequest(BaseModel):

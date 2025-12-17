@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # Server
     HOST: str = "127.0.0.1"
     PORT: int = 8000
+
+    # Timezone Configuration
+    DEFAULT_TIMEZONE: str = "Asia/Ho_Chi_Minh"  # UTC+7 Vietnam
+    STORAGE_TIMEZONE: str = "UTC"  # Database stores in UTC
     
     # Search Configuration
     DEFAULT_NEARBY_RADIUS_KM: float = 10.0
