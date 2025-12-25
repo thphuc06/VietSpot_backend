@@ -167,17 +167,14 @@ async def get_categories(
 ):
     """Lấy danh sách tất cả categories có trong database"""
     try:
-        response = db.table("places").select("category").not_.is_("category", "null").execute()
-        
+        response = db.rpc("get_all_categories").execute()
+
+        # RPC function returns an array directly
         if response.data:
-            print(len(response.data))
-            # Lấy unique categories
-            categories = list(set(item["category"] for item in response.data if item.get("category")))
-            categories.sort()
-            return categories
-        
+            return response.data
+
         return []
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi: {str(e)}")
 
