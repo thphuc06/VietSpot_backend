@@ -16,6 +16,7 @@ python-dotenv>=1.0.0
 # AI/ML Services
 google-genai>=1.0.0
 google-cloud-texttospeech>=2.14.0
+google-cloud-speech>=2.27.0
 sentence-transformers>=2.2.2
 numpy>=1.26.0
 

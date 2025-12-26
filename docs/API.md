@@ -16,6 +16,7 @@
 - [Chat (AI Chatbot)](#chat-ai-chatbot)
 - [Itinerary](#itinerary)
 - [Text-to-Speech](#text-to-speech)
+- [Speech-to-Text](#speech-to-text)
 - [Authentication](#authentication)
 - [Database Triggers](#database-triggers)
 - [RPC Functions](#rpc-functions)
@@ -982,6 +983,163 @@ curl http://localhost:8000/api/tts/languages
 
 ---
 
+## Speech-to-Text
+
+### 1. POST /api/stt/transcribe
+
+Transcribe audio to text using Google Cloud Speech-to-Text API.
+
+**Authentication:** No (Public endpoint)
+
+**Request:** `multipart/form-data`
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `file` | File | ✅ Yes | - | Audio file (webm, mp3, or wav) - max 10MB |
+| `language` | string | No | "vi-VN" | Language code (vi-VN, en-US, ja-JP, zh-CN, ko-KR) |
+
+**Supported Languages:**
+- `vi-VN`: Vietnamese (Tiếng Việt)
+- `en-US`: English (United States)
+- `ja-JP`: Japanese (日本語)
+- `zh-CN`: Chinese Mandarin (中文)
+- `ko-KR`: Korean (한국어)
+
+**Supported Audio Formats:**
+- `webm`: WebM Opus (browser recordings) - 48kHz
+- `mp3`: MP3 - 16kHz
+- `wav`: WAV/PCM - 16kHz
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "transcript": "Xin chào, tôi muốn tìm nhà hàng gần đây",
+  "language": "vi-VN",
+  "confidence": 0.95,
+  "audio_duration": null
+}
+```
+
+**Example (cURL):**
+```bash
+curl -X POST "http://localhost:8000/api/stt/transcribe" \
+  -F "file=@recording.webm" \
+  -F "language=vi-VN"
+```
+
+**Example (JavaScript with MediaRecorder):**
+```javascript
+// Record audio
+const mediaRecorder = new MediaRecorder(stream);
+const chunks = [];
+
+mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+mediaRecorder.onstop = async () => {
+    const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+
+    // Transcribe
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'recording.webm');
+    formData.append('language', 'vi-VN');
+
+    const response = await fetch('/api/stt/transcribe', {
+        method: 'POST',
+        body: formData
+    });
+
+    const result = await response.json();
+    console.log(result.transcript);
+};
+```
+
+**Error Responses:**
+
+400 - Unsupported Language:
+```json
+{
+  "detail": "Ngôn ngữ không được hỗ trợ: fr-FR. Các ngôn ngữ hỗ trợ: en-US, ja-JP, ko-KR, vi-VN, zh-CN"
+}
+```
+
+400 - Unsupported Format:
+```json
+{
+  "detail": "Định dạng không được hỗ trợ: txt. Hỗ trợ: webm, mp3, wav"
+}
+```
+
+413 - File Too Large:
+```json
+{
+  "detail": "File quá lớn (12.3MB). Kích thước tối đa: 10MB"
+}
+```
+
+400 - Empty File:
+```json
+{
+  "detail": "File âm thanh trống"
+}
+```
+
+500 - STT Service Error:
+```json
+{
+  "detail": "Lỗi khi nhận dạng giọng nói: [error details]"
+}
+```
+
+---
+
+### 2. GET /api/stt/languages
+
+Get list of supported languages for speech-to-text.
+
+**Authentication:** No
+
+**Response:**
+```json
+{
+  "supported_languages": [
+    "en-US",
+    "ja-JP",
+    "ko-KR",
+    "vi-VN",
+    "zh-CN"
+  ],
+  "details": {
+    "vi-VN": {
+      "name": "Vietnamese",
+      "native_name": "Tiếng Việt"
+    },
+    "en-US": {
+      "name": "English (US)",
+      "native_name": "English"
+    },
+    "ja-JP": {
+      "name": "Japanese",
+      "native_name": "日本語"
+    },
+    "zh-CN": {
+      "name": "Chinese (Mandarin)",
+      "native_name": "中文"
+    },
+    "ko-KR": {
+      "name": "Korean",
+      "native_name": "한국어"
+    }
+  }
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:8000/api/stt/languages
+```
+
+---
+
 ## Authentication
 
 API sử dụng JWT (JSON Web Token) để xác thực user.
@@ -1142,6 +1300,9 @@ Tạo comment + auto tạo guest user + insert images.
 | **Text-to-Speech** |
 | 27 | POST | `/api/tts` | No | Convert text to speech (MP3) |
 | 28 | GET | `/api/tts/languages` | No | Lấy danh sách ngôn ngữ hỗ trợ |
+| **Speech-to-Text** |
+| 29 | POST | `/api/stt/transcribe` | No | Transcribe audio to text |
+| 30 | GET | `/api/stt/languages` | No | Lấy danh sách ngôn ngữ hỗ trợ |
 
 ---
 
@@ -1167,11 +1328,21 @@ Tạo comment + auto tạo guest user + insert images.
 
 10. **Text-to-Speech**: Endpoint `/api/tts` sử dụng Google Cloud Text-to-Speech API để chuyển đổi văn bản thành giọng nói MP3, hỗ trợ 5 ngôn ngữ (Vietnamese, English, Japanese, Chinese, Korean) với giọng nữ.
 
+11. **Speech-to-Text**: Endpoint `/api/stt/transcribe` sử dụng Google Cloud Speech-to-Text API để nhận dạng giọng nói từ file audio (webm, mp3, wav), hỗ trợ 5 ngôn ngữ với enhanced model và automatic punctuation. Giới hạn 10MB/file, phù hợp cho voice input chatbot.
+
 ---
 
 ## Changelog
 
-### Version 1.2.0 (Latest)
+### Version 1.3.0 (Latest)
+- ✅ Thêm Speech-to-Text endpoints:
+  - `POST /api/stt/transcribe` - Transcribe audio to text
+  - `GET /api/stt/languages` - Lấy danh sách ngôn ngữ hỗ trợ
+- ✅ Hỗ trợ 3 định dạng audio: webm (browser recording), mp3, wav
+- ✅ Enhanced model với automatic punctuation
+- ✅ File size limit 10MB, phù hợp cho chatbot voice input
+
+### Version 1.2.0
 - ✅ Thêm Text-to-Speech endpoints:
   - `POST /api/tts` - Convert text to speech (MP3)
   - `GET /api/tts/languages` - Lấy danh sách ngôn ngữ hỗ trợ

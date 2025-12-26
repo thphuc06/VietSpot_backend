@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoints import places, comments, images, users, chat, itinerary, tts
+from app.api.endpoints import places, comments, images, users, chat, itinerary, tts, stt
 
 api_router = APIRouter()
 
@@ -47,4 +47,10 @@ api_router.include_router(
 api_router.include_router(
     tts.router,
     tags=["Text-to-Speech"]
+)
+
+# Speech-to-Text - AI voice transcription
+api_router.include_router(
+    stt.router,
+    tags=["Speech-to-Text"]
 )
