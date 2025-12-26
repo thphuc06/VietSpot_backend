@@ -15,6 +15,7 @@
 - [Images](#images)
 - [Chat (AI Chatbot)](#chat-ai-chatbot)
 - [Itinerary](#itinerary)
+- [Text-to-Speech](#text-to-speech)
 - [Authentication](#authentication)
 - [Database Triggers](#database-triggers)
 - [RPC Functions](#rpc-functions)
@@ -840,6 +841,147 @@ Tạo lịch trình du lịch tự động dựa trên destination và preferenc
 
 ---
 
+## Text-to-Speech
+
+### 1. POST /api/tts
+
+Convert text to speech using Google Cloud Text-to-Speech API.
+
+**Authentication:** No (Public endpoint)
+
+**Request Body:**
+```json
+{
+  "text": "Xin chào, chào mừng bạn đến Việt Nam!",
+  "language": "vi-VN"
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `text` | string | ✅ Yes | - | Text to convert to speech (1-5000 characters) |
+| `language` | string | No | "vi-VN" | Language code (vi-VN, en-US, ja-JP, zh-CN, ko-KR) |
+
+**Supported Languages:**
+- `vi-VN`: Vietnamese (Tiếng Việt)
+- `en-US`: English (United States)
+- `ja-JP`: Japanese (日本語)
+- `zh-CN`: Chinese Mandarin (中文)
+- `ko-KR`: Korean (한국어)
+
+**Response:**
+- Content-Type: `audio/mpeg`
+- Returns MP3 audio file with female voice
+- Can be played directly in browser or downloaded
+
+**Example (cURL):**
+```bash
+curl -X POST "http://localhost:8000/api/tts" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Xin chào, chào mừng bạn đến Việt Nam!", "language": "vi-VN"}' \
+  --output welcome.mp3
+```
+
+**Example (JavaScript):**
+```javascript
+const response = await fetch('/api/tts', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({
+    text: "Xin chào, chào mừng bạn đến Việt Nam!",
+    language: "vi-VN"
+  })
+});
+
+const blob = await response.blob();
+const audio = new Audio(URL.createObjectURL(blob));
+audio.play();
+```
+
+**Error Responses:**
+
+400 - Unsupported Language:
+```json
+{
+  "detail": "Ngôn ngữ không được hỗ trợ: fr-FR. Các ngôn ngữ hỗ trợ: en-US, ja-JP, ko-KR, vi-VN, zh-CN"
+}
+```
+
+422 - Validation Error:
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "text"],
+      "msg": "ensure this value has at least 1 characters",
+      "type": "value_error.any_str.min_length"
+    }
+  ]
+}
+```
+
+500 - TTS Service Error:
+```json
+{
+  "detail": "Lỗi khi chuyển đổi văn bản thành giọng nói: [error details]"
+}
+```
+
+---
+
+### 2. GET /api/tts/languages
+
+Get list of supported languages for text-to-speech.
+
+**Authentication:** No
+
+**Response:**
+```json
+{
+  "supported_languages": [
+    "en-US",
+    "ja-JP",
+    "ko-KR",
+    "vi-VN",
+    "zh-CN"
+  ],
+  "details": {
+    "vi-VN": {
+      "name": "Vietnamese",
+      "native_name": "Tiếng Việt",
+      "voice": "vi-VN-Wavenet-A"
+    },
+    "en-US": {
+      "name": "English (US)",
+      "native_name": "English",
+      "voice": "en-US-Neural2-F"
+    },
+    "ja-JP": {
+      "name": "Japanese",
+      "native_name": "日本語",
+      "voice": "ja-JP-Wavenet-A"
+    },
+    "zh-CN": {
+      "name": "Chinese (Mandarin)",
+      "native_name": "中文",
+      "voice": "cmn-CN-Wavenet-A"
+    },
+    "ko-KR": {
+      "name": "Korean",
+      "native_name": "한국어",
+      "voice": "ko-KR-Wavenet-A"
+    }
+  }
+}
+```
+
+**Example:**
+```bash
+curl http://localhost:8000/api/tts/languages
+```
+
+---
+
 ## Authentication
 
 API sử dụng JWT (JSON Web Token) để xác thực user.
@@ -997,6 +1139,9 @@ Tạo comment + auto tạo guest user + insert images.
 | 25 | GET | `/api/chat/itinerary/list/{session_id}` | No | Lấy danh sách itineraries |
 | **Itinerary** |
 | 26 | POST | `/api/itinerary/generate` | No | Tạo lịch trình du lịch tự động |
+| **Text-to-Speech** |
+| 27 | POST | `/api/tts` | No | Convert text to speech (MP3) |
+| 28 | GET | `/api/tts/languages` | No | Lấy danh sách ngôn ngữ hỗ trợ |
 
 ---
 
@@ -1020,11 +1165,20 @@ Tạo comment + auto tạo guest user + insert images.
 
 9. **Itinerary Generation**: Endpoint `/api/itinerary/generate` tự động tạo lịch trình du lịch dựa trên preferences và constraints của user.
 
+10. **Text-to-Speech**: Endpoint `/api/tts` sử dụng Google Cloud Text-to-Speech API để chuyển đổi văn bản thành giọng nói MP3, hỗ trợ 5 ngôn ngữ (Vietnamese, English, Japanese, Chinese, Korean) với giọng nữ.
+
 ---
 
 ## Changelog
 
-### Version 1.1.0 (Latest)
+### Version 1.2.0 (Latest)
+- ✅ Thêm Text-to-Speech endpoints:
+  - `POST /api/tts` - Convert text to speech (MP3)
+  - `GET /api/tts/languages` - Lấy danh sách ngôn ngữ hỗ trợ
+- ✅ Hỗ trợ 5 ngôn ngữ: Vietnamese, English, Japanese, Chinese, Korean
+- ✅ Sử dụng Google Cloud Text-to-Speech API với giọng nữ chất lượng cao
+
+### Version 1.1.0
 - ✅ Thêm JWT Authentication cho tất cả endpoints cần xác thực
 - ✅ Thêm endpoint `/api/places/search` - Fuzzy search theo tên địa điểm
 - ✅ Thêm endpoint `/api/comments/{comment_id}/images` - Lấy ảnh của comment
