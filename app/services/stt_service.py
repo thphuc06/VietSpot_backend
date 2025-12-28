@@ -29,7 +29,8 @@ class STTService:
 
     # Limits
     MAX_FILE_SIZE_MB = 10
-    MAX_AUDIO_DURATION_SECONDS = 60
+    MAX_AUDIO_DURATION_SECONDS = 60  # Using long-running recognition for better support
+    SYNC_THRESHOLD_SECONDS = 10  # Use sync API for audio < 10s, async for longer
 
     def __init__(self):
         """Initialize STT service with Google credentials"""
@@ -118,26 +119,39 @@ class STTService:
         # Create audio object
         audio = speech.RecognitionAudio(content=audio_content)
 
-        # Transcribe (synchronous for audio < 1 minute)
+        # Use long_running_recognize for better handling of longer audio
         try:
-            response = client.recognize(config=config, audio=audio)
+            operation = client.long_running_recognize(config=config, audio=audio)
+            # Wait for operation to complete (timeout after 5 minutes)
+            response = operation.result(timeout=300)
         except Exception as e:
             raise Exception(f"Lỗi Google Speech API: {str(e)}")
 
-        # Parse response
+        # Parse response - combine all results
         if not response.results:
             return {
                 "transcript": "",
                 "confidence": 0.0
             }
 
-        # Get best result
-        result = response.results[0]
-        alternative = result.alternatives[0]
+        # Combine all transcripts (for longer audio, results may be split)
+        full_transcript = ""
+        total_confidence = 0.0
+        result_count = 0
+
+        for result in response.results:
+            if result.alternatives:
+                alternative = result.alternatives[0]
+                full_transcript += alternative.transcript + " "
+                total_confidence += alternative.confidence
+                result_count += 1
+
+        # Calculate average confidence
+        avg_confidence = total_confidence / result_count if result_count > 0 else 0.0
 
         return {
-            "transcript": alternative.transcript,
-            "confidence": alternative.confidence
+            "transcript": full_transcript.strip(),
+            "confidence": avg_confidence
         }
 
 
