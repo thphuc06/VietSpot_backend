@@ -21,11 +21,9 @@ class STTService:
         },
         "mp3": {
             "encoding": speech.RecognitionConfig.AudioEncoding.MP3,
-            "sample_rate_hertz": 16000,
         },
         "wav": {
             "encoding": speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            "sample_rate_hertz": 16000,
         }
     }
 
@@ -103,13 +101,18 @@ class STTService:
 
         # Configure recognition
         format_config = self.AUDIO_FORMAT_CONFIGS[audio_format]
-        config = speech.RecognitionConfig(
-            encoding=format_config["encoding"],
-            sample_rate_hertz=format_config["sample_rate_hertz"],
-            language_code=language_code,
-            enable_automatic_punctuation=True,
-            use_enhanced=True  # Better accuracy
-        )
+        config_params = {
+            "encoding": format_config["encoding"],
+            "language_code": language_code,
+            "enable_automatic_punctuation": True,
+            "use_enhanced": True  # Better accuracy
+        }
+
+        # Only set sample_rate_hertz if specified (WAV/MP3 can auto-detect)
+        if "sample_rate_hertz" in format_config:
+            config_params["sample_rate_hertz"] = format_config["sample_rate_hertz"]
+
+        config = speech.RecognitionConfig(**config_params)
 
         # Create audio object
         audio = speech.RecognitionAudio(content=audio_content)
