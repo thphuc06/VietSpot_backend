@@ -105,7 +105,8 @@ class STTService:
             "encoding": format_config["encoding"],
             "language_code": language_code,
             "enable_automatic_punctuation": True,
-            "use_enhanced": True  # Better accuracy
+            "use_enhanced": True,  # Better accuracy
+            "audio_channel_count": 2,  # Support stereo audio (will be downmixed to mono)
         }
 
         # Only set sample_rate_hertz if specified (WAV/MP3 can auto-detect)
